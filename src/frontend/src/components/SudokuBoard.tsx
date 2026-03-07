@@ -69,6 +69,7 @@ function NumberPicker({
         boxShadow:
           "0 20px 60px oklch(var(--primary) / 0.2), 0 4px 12px oklch(0 0 0 / 0.15)",
         minWidth: `${pickerWidth}px`,
+        touchAction: "none",
       }}
     >
       {isNoteMode && (
@@ -285,7 +286,8 @@ export function SudokuBoard({
             "0 8px 32px oklch(var(--primary) / 0.15), 0 2px 8px oklch(0 0 0 / 0.08)",
           aspectRatio: "1",
           width: "100%",
-          maxWidth: "min(90vw, 500px)",
+          maxWidth: "min(88vw, calc(100dvh - 240px))",
+          maxHeight: "calc(100dvh - 240px)",
           background: "oklch(var(--card))",
         }}
       >

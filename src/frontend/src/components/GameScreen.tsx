@@ -546,7 +546,10 @@ export function GameScreen({
   // Loading
   if (isLoading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen">
+      <div
+        className="flex flex-col items-center justify-center"
+        style={{ height: "100dvh" }}
+      >
         <div
           className="w-12 h-12 rounded-full border-4 animate-spin"
           style={{
@@ -569,8 +572,8 @@ export function GameScreen({
     const data = getTodayTournamentData();
     return (
       <div
-        className="flex flex-col items-center justify-center min-h-screen px-6 text-center"
-        style={{ background: "transparent" }}
+        className="flex flex-col items-center justify-center px-6 text-center"
+        style={{ height: "100dvh", background: "transparent" }}
       >
         <div className="text-6xl mb-4">🏆</div>
         <h2
@@ -646,8 +649,12 @@ export function GameScreen({
 
   return (
     <div
-      className="flex flex-col min-h-screen relative"
-      style={{ background: "transparent" }}
+      className="flex flex-col relative"
+      style={{
+        height: "100dvh",
+        overflow: "hidden",
+        background: "transparent",
+      }}
     >
       {/* Chain Flash Overlay */}
       <AnimatePresence>
@@ -678,7 +685,7 @@ export function GameScreen({
       </AnimatePresence>
 
       {/* Header */}
-      <header className="flex items-center justify-between px-4 py-3 sticky top-0 z-10 glass-card">
+      <header className="flex items-center justify-between px-3 py-2 sticky top-0 z-10 glass-card">
         <button
           type="button"
           data-ocid="game.back.button"
@@ -778,7 +785,7 @@ export function GameScreen({
       </header>
 
       {/* Mode-specific header panels */}
-      <div className="px-4 py-2 space-y-2">
+      <div className="px-3 py-1.5 space-y-1.5">
         {/* Speed Rush: Combo */}
         {gameMode === "speed_rush" && combo >= 3 && (
           <motion.div
@@ -974,7 +981,10 @@ export function GameScreen({
       </div>
 
       {/* Board area */}
-      <main className="flex-1 flex flex-col items-center justify-center px-4 py-2 gap-4">
+      <main
+        className="flex-1 flex flex-col items-center justify-center px-3 py-1"
+        style={{ minHeight: 0 }}
+      >
         {isPaused ? (
           <div className="text-center">
             <div className="text-6xl mb-4">⏸</div>
@@ -1012,12 +1022,12 @@ export function GameScreen({
 
       {/* Controls */}
       {!isPaused && (
-        <div className="flex items-center justify-center gap-3 px-4 py-4">
+        <div className="flex items-center justify-center gap-2 px-3 py-2">
           <button
             type="button"
             data-ocid="game.note_toggle"
             onClick={() => setIsNoteMode((n) => !n)}
-            className="flex flex-col items-center gap-1 rounded-2xl px-4 py-3 transition-all hover:scale-105"
+            className="flex flex-col items-center gap-0.5 rounded-2xl px-3 py-2 transition-all hover:scale-105"
             style={{
               background: isNoteMode
                 ? "oklch(var(--primary))"
@@ -1025,10 +1035,10 @@ export function GameScreen({
               color: isNoteMode
                 ? "oklch(var(--primary-foreground))"
                 : "oklch(var(--primary))",
-              minWidth: "72px",
+              minWidth: "60px",
             }}
           >
-            <span className="text-xl">✏️</span>
+            <span className="text-lg">✏️</span>
             <span className="text-xs font-semibold">{t("notes")}</span>
           </button>
 
@@ -1037,7 +1047,7 @@ export function GameScreen({
             data-ocid="game.hint_button"
             onClick={handleHint}
             disabled={hintsLeft === 0}
-            className="flex flex-col items-center gap-1 rounded-2xl px-4 py-3 transition-all hover:scale-105 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex flex-col items-center gap-0.5 rounded-2xl px-3 py-2 transition-all hover:scale-105 disabled:opacity-40 disabled:cursor-not-allowed"
             style={{
               background:
                 hintsLeft > 0
@@ -1047,10 +1057,10 @@ export function GameScreen({
                 hintsLeft > 0
                   ? "oklch(var(--accent-foreground))"
                   : "oklch(var(--muted-foreground))",
-              minWidth: "72px",
+              minWidth: "60px",
             }}
           >
-            <span className="text-xl">💡</span>
+            <span className="text-lg">💡</span>
             <span className="text-xs font-semibold">
               {t("hints")} ({hintsLeft})
             </span>
@@ -1062,14 +1072,14 @@ export function GameScreen({
               type="button"
               data-ocid="game.chain.exit.button"
               onClick={() => setShowChainSummary(true)}
-              className="flex flex-col items-center gap-1 rounded-2xl px-4 py-3 transition-all hover:scale-105"
+              className="flex flex-col items-center gap-0.5 rounded-2xl px-3 py-2 transition-all hover:scale-105"
               style={{
                 background: "oklch(var(--secondary))",
                 color: "oklch(var(--muted-foreground))",
-                minWidth: "72px",
+                minWidth: "60px",
               }}
             >
-              <span className="text-xl">🏁</span>
+              <span className="text-lg">🏁</span>
               <span className="text-xs font-semibold">
                 {lang === "tr" ? "Bitir" : "End"}
               </span>

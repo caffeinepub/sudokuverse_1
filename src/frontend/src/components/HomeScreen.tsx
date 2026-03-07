@@ -1,4 +1,4 @@
-import { motion } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
 import React from "react";
 import {
   DailyTaskType,
@@ -8,6 +8,23 @@ import {
 import { type Lang, useTranslation } from "../i18n";
 import { XPBar, getRankInfo } from "./XPBar";
 
+// Extended task types that are frontend-only (not stored in backend)
+type ExtendedTaskType =
+  | DailyTaskType
+  | "solve_three_puzzles"
+  | "solve_hard_puzzle"
+  | "no_errors_puzzle"
+  | "speed_solve"
+  | "use_notes_mode"
+  | "solve_medium_plus"
+  | "chain_two";
+
+interface ExtendedDailyTask {
+  taskType: ExtendedTaskType;
+  isCompleted: boolean;
+  isFrontendOnly?: boolean;
+}
+
 interface HomeScreenProps {
   lang: Lang;
   playerProfile: PlayerProfile | null;
@@ -15,6 +32,60 @@ interface HomeScreenProps {
   onPlay?: (difficulty: Difficulty) => void;
   onOpenModes: () => void;
   onNavigate: (screen: "stats" | "badges" | "settings") => void;
+}
+
+const TASK_EMOJIS: Record<ExtendedTaskType, string> = {
+  [DailyTaskType.solve_two_puzzles]: "🎯",
+  [DailyTaskType.solve_no_hints]: "🧠",
+  [DailyTaskType.solve_under_time]: "⚡",
+  solve_three_puzzles: "🔢",
+  solve_hard_puzzle: "💪",
+  no_errors_puzzle: "✨",
+  speed_solve: "🏃",
+  use_notes_mode: "📝",
+  solve_medium_plus: "🎖️",
+  chain_two: "⛓️",
+};
+
+const EXTRA_TASKS: ExtendedDailyTask[] = [
+  { taskType: "solve_three_puzzles", isCompleted: false, isFrontendOnly: true },
+  { taskType: "solve_hard_puzzle", isCompleted: false, isFrontendOnly: true },
+  { taskType: "no_errors_puzzle", isCompleted: false, isFrontendOnly: true },
+  { taskType: "speed_solve", isCompleted: false, isFrontendOnly: true },
+  { taskType: "use_notes_mode", isCompleted: false, isFrontendOnly: true },
+  { taskType: "solve_medium_plus", isCompleted: false, isFrontendOnly: true },
+  { taskType: "chain_two", isCompleted: false, isFrontendOnly: true },
+];
+
+const WEEKLY_CHALLENGES = [
+  "weekly_task_1",
+  "weekly_task_2",
+  "weekly_task_3",
+  "weekly_task_4",
+  "weekly_task_5",
+  "weekly_task_6",
+  "weekly_task_7",
+] as const;
+
+const WEEKLY_CHALLENGE_EMOJIS = ["🧩", "💪", "🔥", "⚡", "⛓️", "🎯", "🌈"];
+
+function getTaskLabel(
+  taskType: ExtendedTaskType,
+  t: ReturnType<typeof useTranslation>,
+): string {
+  const map: Partial<Record<ExtendedTaskType, string>> = {
+    [DailyTaskType.solve_two_puzzles]: t("task_solve_two_puzzles"),
+    [DailyTaskType.solve_no_hints]: t("task_solve_no_hints"),
+    [DailyTaskType.solve_under_time]: t("task_solve_under_time"),
+    solve_three_puzzles: t("task_solve_three_puzzles"),
+    solve_hard_puzzle: t("task_solve_hard_puzzle"),
+    no_errors_puzzle: t("task_no_errors_puzzle"),
+    speed_solve: t("task_speed_solve"),
+    use_notes_mode: t("task_use_notes_mode"),
+    solve_medium_plus: t("task_solve_medium_plus"),
+    chain_two: t("task_chain_two"),
+  };
+  return map[taskType] ?? String(taskType);
 }
 
 function DailyTasksPanel({
@@ -26,28 +97,21 @@ function DailyTasksPanel({
 }) {
   const t = useTranslation(lang);
 
-  const getTaskLabel = (taskType: DailyTaskType) => {
-    const map: Record<DailyTaskType, string> = {
-      [DailyTaskType.solve_two_puzzles]: t("task_solve_two_puzzles"),
-      [DailyTaskType.solve_no_hints]: t("task_solve_no_hints"),
-      [DailyTaskType.solve_under_time]: t("task_solve_under_time"),
-    };
-    return map[taskType];
-  };
+  const backendTasks: ExtendedDailyTask[] = (
+    playerProfile?.dailyTasks ?? [
+      { taskType: DailyTaskType.solve_two_puzzles, isCompleted: false },
+      { taskType: DailyTaskType.solve_no_hints, isCompleted: false },
+      { taskType: DailyTaskType.solve_under_time, isCompleted: false },
+    ]
+  ).map((task) => ({
+    taskType: task.taskType as ExtendedTaskType,
+    isCompleted: task.isCompleted,
+  }));
 
-  const tasks = playerProfile?.dailyTasks ?? [
-    { taskType: DailyTaskType.solve_two_puzzles, isCompleted: false },
-    { taskType: DailyTaskType.solve_no_hints, isCompleted: false },
-    { taskType: DailyTaskType.solve_under_time, isCompleted: false },
-  ];
-
-  const taskEmojis: Record<DailyTaskType, string> = {
-    [DailyTaskType.solve_two_puzzles]: "🎯",
-    [DailyTaskType.solve_no_hints]: "🧠",
-    [DailyTaskType.solve_under_time]: "⚡",
-  };
-
-  const completedCount = tasks.filter((task) => task.isCompleted).length;
+  const allTasks: ExtendedDailyTask[] = [...backendTasks, ...EXTRA_TASKS];
+  const completedCount = allTasks.filter((task) => task.isCompleted).length;
+  const totalCount = allTasks.length;
+  const allDone = completedCount === totalCount;
 
   return (
     <motion.div
@@ -55,7 +119,7 @@ function DailyTasksPanel({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.2 }}
-      className="rounded-2xl p-4"
+      className="rounded-2xl p-3"
       style={{
         background: "oklch(var(--card))",
         border: "1.5px solid oklch(var(--border))",
@@ -70,47 +134,97 @@ function DailyTasksPanel({
           📅 {t("dailyTasks")}
         </h3>
         <span
-          className="text-xs font-bold px-2 py-1 rounded-full"
+          className="text-xs font-bold px-2 py-1 rounded-full transition-all duration-500"
           style={{
-            background:
-              completedCount === 3
-                ? "oklch(var(--game-cell-hint))"
-                : "oklch(var(--secondary))",
-            color:
-              completedCount === 3
-                ? "oklch(var(--foreground))"
-                : "oklch(var(--primary))",
+            background: allDone
+              ? "oklch(var(--game-cell-hint))"
+              : "oklch(var(--secondary))",
+            color: allDone
+              ? "oklch(var(--foreground))"
+              : "oklch(var(--primary))",
           }}
         >
-          {completedCount}/3
+          {completedCount}/{totalCount}
         </span>
       </div>
-      <div className="space-y-2">
-        {tasks.map((task) => (
-          <div
+
+      {/* Progress bar */}
+      <div
+        className="h-1.5 rounded-full overflow-hidden mb-3"
+        style={{ background: "oklch(var(--muted))" }}
+      >
+        <motion.div
+          className="h-full rounded-full"
+          initial={{ width: 0 }}
+          animate={{ width: `${(completedCount / totalCount) * 100}%` }}
+          transition={{ duration: 0.8, ease: "easeOut" }}
+          style={{
+            background: allDone
+              ? "linear-gradient(90deg, oklch(0.72 0.19 142), oklch(0.62 0.2 162))"
+              : "linear-gradient(90deg, oklch(var(--accent)), oklch(var(--primary)))",
+          }}
+        />
+      </div>
+
+      <div
+        className="space-y-1.5 overflow-y-auto pr-0.5"
+        style={{ maxHeight: "260px" }}
+      >
+        {allTasks.map((task, index) => (
+          <motion.div
             key={task.taskType}
-            className="flex items-center gap-3 rounded-xl p-2.5"
+            data-ocid={`daily.task.item.${index + 1}`}
+            initial={{ opacity: 0, x: -12 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.05 * index }}
+            className="flex items-center gap-2.5 rounded-xl px-2.5 py-2"
             style={{
               background: task.isCompleted
-                ? "oklch(var(--game-cell-hint))"
+                ? "oklch(var(--game-cell-hint) / 0.5)"
                 : "oklch(var(--muted))",
+              border: task.isCompleted
+                ? "1px solid oklch(var(--game-cell-hint))"
+                : "1px solid transparent",
             }}
           >
-            <span className="text-lg">{taskEmojis[task.taskType]}</span>
+            <span className="text-base leading-none flex-shrink-0">
+              {TASK_EMOJIS[task.taskType]}
+            </span>
             <span
-              className="flex-1 text-sm font-medium"
+              className="flex-1 text-xs font-medium leading-tight"
               style={{
                 color: "oklch(var(--card-foreground))",
                 textDecoration: task.isCompleted ? "line-through" : "none",
-                opacity: task.isCompleted ? 0.7 : 1,
+                opacity: task.isCompleted ? 0.6 : 1,
               }}
             >
-              {getTaskLabel(task.taskType)}
+              {getTaskLabel(task.taskType, t)}
             </span>
-            {task.isCompleted && (
-              <span className="check-bounce text-lg">✅</span>
+            <AnimatePresence>
+              {task.isCompleted && (
+                <motion.span
+                  initial={{ scale: 0, rotate: -30 }}
+                  animate={{ scale: 1, rotate: 0 }}
+                  exit={{ scale: 0 }}
+                  className="text-sm flex-shrink-0"
+                >
+                  ✅
+                </motion.span>
+              )}
+            </AnimatePresence>
+            {task.isFrontendOnly && !task.isCompleted && (
+              <span
+                className="text-xs px-1.5 py-0.5 rounded-full flex-shrink-0"
+                style={{
+                  background: "oklch(var(--secondary))",
+                  color: "oklch(var(--muted-foreground))",
+                  fontSize: "9px",
+                }}
+              >
+                {t("pending")}
+              </span>
             )}
-          </div>
+          </motion.div>
         ))}
       </div>
     </motion.div>
@@ -125,12 +239,18 @@ function WeeklyChallengePanel({
   lang: Lang;
 }) {
   const t = useTranslation(lang);
-  const completed = Number(
+  const badgeAwarded = playerProfile?.weeklyChallenge?.badgeAwarded ?? false;
+
+  // For now, frontend-only state: derive how many "weekly" sub-challenges are done
+  // based on puzzlesCompleted from backend as a rough proxy (0 = nothing done)
+  const puzzlesCompleted = Number(
     playerProfile?.weeklyChallenge?.puzzlesCompleted ?? 0,
   );
-  const goal = 7;
-  const progress = Math.min(100, (completed / goal) * 100);
-  const badgeAwarded = playerProfile?.weeklyChallenge?.badgeAwarded ?? false;
+  // Map puzzlesCompleted to completed challenge checkboxes (0-7 scale)
+  // Each challenge requires ~1 puzzle milestone
+  const completedChallenges = Math.min(7, puzzlesCompleted);
+  const totalChallenges = 7;
+  const allDone = completedChallenges === totalChallenges || badgeAwarded;
 
   return (
     <motion.div
@@ -138,59 +258,134 @@ function WeeklyChallengePanel({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.3 }}
-      className="rounded-2xl p-4"
+      className="rounded-2xl p-3"
       style={{
-        background: badgeAwarded
-          ? "oklch(var(--secondary))"
-          : "oklch(var(--card))",
-        border: `1.5px solid ${badgeAwarded ? "oklch(var(--accent))" : "oklch(var(--border))"}`,
+        background: allDone ? "oklch(var(--secondary))" : "oklch(var(--card))",
+        border: `1.5px solid ${allDone ? "oklch(var(--accent))" : "oklch(var(--border))"}`,
         boxShadow: "0 2px 12px oklch(var(--primary) / 0.06)",
       }}
     >
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-2">
         <h3
           className="font-bold font-display text-base"
           style={{ color: "oklch(var(--card-foreground))" }}
         >
           🏆 {t("weeklyChallenge")}
         </h3>
-        {badgeAwarded && (
-          <span
-            className="text-sm font-bold"
-            style={{ color: "oklch(var(--primary))" }}
-          >
-            🏅 Champion!
-          </span>
-        )}
-      </div>
-      <div className="space-y-2">
-        <div className="flex justify-between text-sm">
-          <span style={{ color: "oklch(var(--muted-foreground))" }}>
-            {completed}/{goal} {t("puzzlesCompleted")}
-          </span>
-        </div>
-        <div
-          className="h-3 rounded-full overflow-hidden"
-          style={{ background: "oklch(var(--muted))" }}
+        <span
+          className="text-xs font-bold px-2 py-1 rounded-full"
+          style={{
+            background: allDone
+              ? "oklch(var(--game-cell-hint))"
+              : "oklch(var(--secondary))",
+            color: allDone
+              ? "oklch(var(--foreground))"
+              : "oklch(var(--primary))",
+          }}
         >
-          <div
-            className="h-full rounded-full transition-all duration-1000"
-            style={{
-              width: `${progress}%`,
-              background:
-                "linear-gradient(90deg, oklch(var(--accent)), oklch(var(--primary)))",
-            }}
-          />
-        </div>
-        {badgeAwarded && (
-          <p
-            className="text-xs font-semibold"
-            style={{ color: "oklch(var(--primary))" }}
-          >
-            {t("weeklyChallengeComplete")}
-          </p>
-        )}
+          {allDone ? completedChallenges : completedChallenges}/
+          {totalChallenges}
+        </span>
       </div>
+
+      {/* Overall progress bar */}
+      <div
+        className="h-1.5 rounded-full overflow-hidden mb-3"
+        style={{ background: "oklch(var(--muted))" }}
+      >
+        <motion.div
+          className="h-full rounded-full"
+          initial={{ width: 0 }}
+          animate={{
+            width: `${(completedChallenges / totalChallenges) * 100}%`,
+          }}
+          transition={{ duration: 1, ease: "easeOut", delay: 0.4 }}
+          style={{
+            background: allDone
+              ? "linear-gradient(90deg, oklch(0.72 0.19 52), oklch(0.62 0.23 45))"
+              : "linear-gradient(90deg, oklch(var(--accent)), oklch(var(--primary)))",
+          }}
+        />
+      </div>
+
+      {/* Weekly challenge checklist */}
+      <div
+        className="space-y-1.5 overflow-y-auto pr-0.5"
+        style={{ maxHeight: "220px" }}
+      >
+        {WEEKLY_CHALLENGES.map((taskKey, index) => {
+          const isDone = index < completedChallenges || badgeAwarded;
+          return (
+            <motion.div
+              key={taskKey}
+              data-ocid={`weekly.challenge.item.${index + 1}`}
+              initial={{ opacity: 0, x: -12 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.06 * index + 0.3 }}
+              className="flex items-center gap-2.5 rounded-xl px-2.5 py-2"
+              style={{
+                background: isDone
+                  ? "oklch(var(--game-cell-hint) / 0.4)"
+                  : "oklch(var(--muted))",
+                border: isDone
+                  ? "1px solid oklch(var(--game-cell-hint) / 0.6)"
+                  : "1px solid transparent",
+              }}
+            >
+              {/* Checkbox indicator */}
+              <motion.div
+                className="w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0"
+                style={{
+                  background: isDone
+                    ? "oklch(var(--game-cell-hint))"
+                    : "oklch(var(--border))",
+                  border: isDone
+                    ? "none"
+                    : "1.5px solid oklch(var(--muted-foreground) / 0.4)",
+                }}
+                animate={isDone ? { scale: [1, 1.2, 1] } : {}}
+                transition={{ duration: 0.3 }}
+              >
+                {isDone && (
+                  <motion.span
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    className="text-xs leading-none"
+                  >
+                    ✓
+                  </motion.span>
+                )}
+              </motion.div>
+
+              <span className="text-base leading-none flex-shrink-0">
+                {WEEKLY_CHALLENGE_EMOJIS[index]}
+              </span>
+
+              <span
+                className="flex-1 text-xs font-medium leading-tight"
+                style={{
+                  color: "oklch(var(--card-foreground))",
+                  textDecoration: isDone ? "line-through" : "none",
+                  opacity: isDone ? 0.65 : 1,
+                }}
+              >
+                {t(taskKey)}
+              </span>
+            </motion.div>
+          );
+        })}
+      </div>
+
+      {allDone && (
+        <motion.p
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-xs font-semibold mt-2 text-center"
+          style={{ color: "oklch(var(--primary))" }}
+        >
+          {t("weeklyChallengeComplete")}
+        </motion.p>
+      )}
     </motion.div>
   );
 }
@@ -230,8 +425,12 @@ export function HomeScreen({
 
   return (
     <div
-      className="min-h-screen flex flex-col"
-      style={{ background: "transparent" }}
+      className="flex flex-col"
+      style={{
+        height: "100dvh",
+        overflow: "hidden",
+        background: "transparent",
+      }}
     >
       {/* Decorative gradient orbs */}
       <div
@@ -252,13 +451,13 @@ export function HomeScreen({
       />
 
       {/* Header */}
-      <header className="relative px-6 pt-8 pb-4">
+      <header className="relative px-6 pt-4 pb-3">
         <div className="flex items-start justify-between">
           <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
           >
-            <h1 className="text-4xl font-black font-display leading-tight gradient-text">
+            <h1 className="text-3xl font-black font-display leading-tight gradient-text">
               SudokuVerse
             </h1>
             <p
@@ -310,7 +509,10 @@ export function HomeScreen({
       </header>
 
       {/* Main content */}
-      <main className="flex-1 px-6 pb-6 space-y-5 overflow-y-auto">
+      <main
+        className="flex-1 px-6 pb-4 space-y-3 overflow-y-auto"
+        style={{ minHeight: 0 }}
+      >
         {/* Choose Mode CTA */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -324,7 +526,7 @@ export function HomeScreen({
             whileHover={{ scale: 1.03 }}
             whileTap={{ scale: 0.97 }}
             onClick={onOpenModes}
-            className="w-full text-white font-black font-display text-2xl py-5 rounded-2xl shadow-lg relative overflow-hidden"
+            className="w-full text-white font-black font-display text-2xl py-4 rounded-2xl shadow-lg relative overflow-hidden"
             style={{
               background:
                 "linear-gradient(135deg, oklch(0.52 0.24 292), oklch(0.62 0.23 340), oklch(0.72 0.19 52))",
@@ -360,7 +562,7 @@ export function HomeScreen({
 
       {/* Bottom nav */}
       <nav
-        className="sticky bottom-0 glass-card border-t px-4 py-3"
+        className="sticky bottom-0 glass-card border-t px-4 py-2"
         style={{ borderColor: "oklch(var(--border))" }}
       >
         <div className="flex items-center justify-around max-w-sm mx-auto">

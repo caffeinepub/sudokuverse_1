@@ -113,11 +113,15 @@ export function BadgesScreen({
 
   return (
     <div
-      className="min-h-screen flex flex-col"
-      style={{ background: "oklch(0.98 0.005 240)" }}
+      className="flex flex-col"
+      style={{
+        height: "100dvh",
+        overflowY: "auto",
+        background: "oklch(0.98 0.005 240)",
+      }}
     >
       {/* Header */}
-      <header className="flex items-center gap-4 px-6 pt-8 pb-4">
+      <header className="flex items-center gap-4 px-6 pt-4 pb-3">
         <button
           type="button"
           onClick={onBack}

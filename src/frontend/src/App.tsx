@@ -160,7 +160,13 @@ function AppInner() {
   return (
     <div
       className="relative font-body"
-      style={{ minHeight: "100dvh", maxWidth: "480px", margin: "0 auto" }}
+      style={{
+        height: "100dvh",
+        maxWidth: "480px",
+        margin: "0 auto",
+        overflow: "hidden",
+        touchAction: "pan-y",
+      }}
     >
       {/* Atmospheric background (fixed, full-viewport) */}
       <AtmosphericBackground />

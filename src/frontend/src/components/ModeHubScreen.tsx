@@ -160,8 +160,12 @@ export function ModeHubScreen({
 
   return (
     <div
-      className="min-h-screen flex flex-col"
-      style={{ background: "transparent" }}
+      className="flex flex-col"
+      style={{
+        height: "100dvh",
+        overflow: "hidden",
+        background: "transparent",
+      }}
     >
       {/* Background orbs */}
       <div
@@ -183,14 +187,14 @@ export function ModeHubScreen({
 
       {/* Header */}
       <header
-        className="sticky top-0 z-20 px-5 pt-6 pb-4"
+        className="sticky top-0 z-20 px-5 pt-3 pb-2"
         style={{
           background: "oklch(var(--background) / 0.92)",
           backdropFilter: "blur(12px)",
           borderBottom: "1px solid oklch(var(--border))",
         }}
       >
-        <div className="flex items-center gap-3 mb-4">
+        <div className="flex items-center gap-3 mb-3">
           <motion.button
             type="button"
             data-ocid="modehub.back.button"
@@ -250,7 +254,10 @@ export function ModeHubScreen({
       </header>
 
       {/* Mode Grid */}
-      <main className="flex-1 px-4 py-4 overflow-y-auto pb-8">
+      <main
+        className="flex-1 px-4 py-3 overflow-y-auto pb-6"
+        style={{ minHeight: 0 }}
+      >
         <motion.div
           className="grid grid-cols-2 gap-3"
           variants={containerVariants}
@@ -273,13 +280,13 @@ export function ModeHubScreen({
                 onHoverEnd={() => setHoveredMode(null)}
                 whileHover={{ scale: 1.04, y: -3 }}
                 whileTap={{ scale: 0.96 }}
-                className="relative flex flex-col items-start text-left rounded-2xl p-4 overflow-hidden"
+                className="relative flex flex-col items-start text-left rounded-2xl p-3 overflow-hidden"
                 style={{
                   background: mode.gradient,
                   boxShadow: isHovered
                     ? `0 12px 28px ${mode.shadowColor}, 0 4px 8px oklch(0 0 0 / 0.15)`
                     : `0 4px 16px ${mode.shadowColor}`,
-                  minHeight: "140px",
+                  minHeight: "110px",
                   transition: "box-shadow 0.2s ease",
                 }}
               >
@@ -311,7 +318,7 @@ export function ModeHubScreen({
 
                 {/* Emoji */}
                 <motion.div
-                  className="text-4xl mb-2 leading-none"
+                  className="text-3xl mb-1.5 leading-none"
                   animate={{ scale: isHovered ? 1.15 : 1 }}
                   transition={{ type: "spring", stiffness: 400, damping: 20 }}
                 >
