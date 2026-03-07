@@ -1,0 +1,590 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+  font-family: "Bricolage Grotesque";
+  src: url("/assets/fonts/BricolageGrotesque.woff2") format("woff2");
+  font-display: swap;
+  font-weight: 100 900;
+}
+
+@font-face {
+  font-family: "Outfit";
+  src: url("/assets/fonts/Outfit.woff2") format("woff2");
+  font-display: swap;
+  font-weight: 100 900;
+}
+
+@layer base {
+  :root {
+    --radius: 0.75rem;
+
+    /* SudokuVerse Vibrant Light Theme */
+    --background: 0.98 0.005 240;
+    --foreground: 0.18 0.04 264;
+    --card: 1 0 0;
+    --card-foreground: 0.18 0.04 264;
+    --popover: 1 0 0;
+    --popover-foreground: 0.18 0.04 264;
+
+    /* Primary: Vivid Purple */
+    --primary: 0.52 0.24 292;
+    --primary-foreground: 1 0 0;
+
+    /* Secondary: Soft Lavender */
+    --secondary: 0.93 0.04 280;
+    --secondary-foreground: 0.35 0.14 280;
+
+    /* Muted */
+    --muted: 0.95 0.01 250;
+    --muted-foreground: 0.52 0.04 250;
+
+    /* Accent: Vivid Orange */
+    --accent: 0.72 0.19 52;
+    --accent-foreground: 1 0 0;
+
+    /* Destructive: Red */
+    --destructive: 0.59 0.22 26;
+    --destructive-foreground: 1 0 0;
+
+    --border: 0.88 0.02 260;
+    --input: 0.9 0.02 260;
+    --ring: 0.52 0.24 292;
+
+    /* Chart colors */
+    --chart-1: 0.52 0.24 292;
+    --chart-2: 0.72 0.19 52;
+    --chart-3: 0.62 0.23 340;
+    --chart-4: 0.57 0.22 220;
+    --chart-5: 0.68 0.2 145;
+
+    /* Sidebar */
+    --sidebar: 0.97 0.01 260;
+    --sidebar-foreground: 0.18 0.04 264;
+    --sidebar-primary: 0.52 0.24 292;
+    --sidebar-primary-foreground: 1 0 0;
+    --sidebar-accent: 0.93 0.04 280;
+    --sidebar-accent-foreground: 0.35 0.14 280;
+    --sidebar-border: 0.88 0.02 260;
+    --sidebar-ring: 0.52 0.24 292;
+
+    /* SudokuVerse Custom tokens */
+    --game-cell-given: 0.94 0.03 250;
+    --game-cell-selected: 0.82 0.12 240;
+    --game-cell-highlight: 0.93 0.06 260;
+    --game-cell-error: 0.92 0.08 20;
+    --game-cell-hint: 0.9 0.08 145;
+    --game-cell-player: 0.52 0.24 292;
+
+    /* Gradients raw values for use in inline styles */
+    --gradient-purple: oklch(0.52 0.24 292);
+    --gradient-orange: oklch(0.72 0.19 52);
+    --gradient-pink: oklch(0.62 0.23 340);
+    --gradient-blue: oklch(0.57 0.22 220);
+  }
+
+  [data-theme="dark"] {
+    --background: 0.12 0.02 264;
+    --foreground: 0.95 0 0;
+    --card: 0.16 0.03 264;
+    --card-foreground: 0.95 0 0;
+    --popover: 0.16 0.03 264;
+    --popover-foreground: 0.95 0 0;
+    --primary: 0.65 0.3 292;
+    --primary-foreground: 0.1 0 0;
+    --secondary: 0.22 0.05 264;
+    --secondary-foreground: 0.85 0.05 280;
+    --muted: 0.2 0.03 260;
+    --muted-foreground: 0.65 0.04 260;
+    --accent: 0.7 0.22 195;
+    --accent-foreground: 0.1 0 0;
+    --destructive: 0.55 0.22 26;
+    --destructive-foreground: 1 0 0;
+    --border: 0.28 0.05 264;
+    --input: 0.25 0.04 264;
+    --ring: 0.65 0.3 292;
+    --game-cell-given: 0.2 0.04 264;
+    --game-cell-selected: 0.32 0.1 264;
+    --game-cell-highlight: 0.22 0.04 264;
+    --game-cell-error: 0.25 0.08 20;
+    --game-cell-hint: 0.22 0.06 145;
+    --game-cell-player: 0.65 0.3 292;
+  }
+
+  [data-theme="cyberpunk"] {
+    --background: 0.1 0.02 240;
+    --foreground: 0.95 0.02 100;
+    --card: 0.14 0.03 240;
+    --card-foreground: 0.95 0.02 100;
+    --popover: 0.14 0.03 240;
+    --popover-foreground: 0.95 0.02 100;
+    --primary: 0.9 0.25 100;
+    --primary-foreground: 0.1 0 0;
+    --secondary: 0.18 0.04 240;
+    --secondary-foreground: 0.8 0.15 100;
+    --muted: 0.16 0.03 240;
+    --muted-foreground: 0.6 0.06 240;
+    --accent: 0.62 0.3 340;
+    --accent-foreground: 1 0 0;
+    --destructive: 0.55 0.22 26;
+    --destructive-foreground: 1 0 0;
+    --border: 0.25 0.06 240;
+    --input: 0.22 0.05 240;
+    --ring: 0.9 0.25 100;
+    --game-cell-given: 0.18 0.04 240;
+    --game-cell-selected: 0.28 0.08 100;
+    --game-cell-highlight: 0.2 0.04 240;
+    --game-cell-error: 0.25 0.08 20;
+    --game-cell-hint: 0.22 0.06 145;
+    --game-cell-player: 0.9 0.25 100;
+  }
+
+  [data-theme="ocean"] {
+    --background: 0.97 0.02 220;
+    --foreground: 0.18 0.06 220;
+    --card: 1 0 0;
+    --card-foreground: 0.18 0.06 220;
+    --popover: 1 0 0;
+    --popover-foreground: 0.18 0.06 220;
+    --primary: 0.52 0.2 195;
+    --primary-foreground: 1 0 0;
+    --secondary: 0.9 0.06 210;
+    --secondary-foreground: 0.35 0.12 195;
+    --muted: 0.94 0.03 215;
+    --muted-foreground: 0.52 0.06 210;
+    --accent: 0.68 0.18 180;
+    --accent-foreground: 1 0 0;
+    --destructive: 0.55 0.22 26;
+    --destructive-foreground: 1 0 0;
+    --border: 0.85 0.04 215;
+    --input: 0.88 0.04 215;
+    --ring: 0.52 0.2 195;
+    --game-cell-given: 0.92 0.04 215;
+    --game-cell-selected: 0.78 0.1 195;
+    --game-cell-highlight: 0.9 0.06 210;
+    --game-cell-error: 0.92 0.08 20;
+    --game-cell-hint: 0.9 0.08 145;
+    --game-cell-player: 0.52 0.2 195;
+  }
+
+  [data-theme="sunset"] {
+    --background: 0.97 0.02 70;
+    --foreground: 0.2 0.05 40;
+    --card: 1 0 0;
+    --card-foreground: 0.2 0.05 40;
+    --popover: 1 0 0;
+    --popover-foreground: 0.2 0.05 40;
+    --primary: 0.62 0.22 40;
+    --primary-foreground: 1 0 0;
+    --secondary: 0.93 0.06 60;
+    --secondary-foreground: 0.4 0.14 40;
+    --muted: 0.94 0.03 65;
+    --muted-foreground: 0.55 0.06 50;
+    --accent: 0.68 0.22 20;
+    --accent-foreground: 1 0 0;
+    --destructive: 0.55 0.22 26;
+    --destructive-foreground: 1 0 0;
+    --border: 0.88 0.04 60;
+    --input: 0.9 0.04 60;
+    --ring: 0.62 0.22 40;
+    --game-cell-given: 0.93 0.04 60;
+    --game-cell-selected: 0.82 0.1 40;
+    --game-cell-highlight: 0.92 0.06 55;
+    --game-cell-error: 0.92 0.08 20;
+    --game-cell-hint: 0.9 0.08 145;
+    --game-cell-player: 0.62 0.22 40;
+  }
+
+  [data-theme="japan"] {
+    --background: 0.92 0.02 10;
+    --foreground: 0.15 0.03 10;
+    --card: 0.94 0.02 10;
+    --card-foreground: 0.15 0.03 10;
+    --popover: 0.94 0.02 10;
+    --popover-foreground: 0.15 0.03 10;
+    --primary: 0.52 0.24 25;
+    --primary-foreground: 1 0 0;
+    --secondary: 0.88 0.04 25;
+    --secondary-foreground: 0.4 0.14 25;
+    --muted: 0.9 0.02 10;
+    --muted-foreground: 0.5 0.04 10;
+    --accent: 0.45 0.2 25;
+    --accent-foreground: 1 0 0;
+    --destructive: 0.55 0.22 26;
+    --destructive-foreground: 1 0 0;
+    --border: 0.82 0.04 15;
+    --input: 0.85 0.03 15;
+    --ring: 0.52 0.24 25;
+    --game-cell-given: 0.88 0.03 10;
+    --game-cell-selected: 0.78 0.1 25;
+    --game-cell-highlight: 0.86 0.04 10;
+    --game-cell-error: 0.88 0.1 20;
+    --game-cell-hint: 0.88 0.08 145;
+    --game-cell-player: 0.52 0.24 25;
+  }
+
+  [data-theme="ocean"] {
+    --background: 0.15 0.06 220;
+    --foreground: 0.92 0.03 200;
+    --card: 0.18 0.06 215;
+    --card-foreground: 0.92 0.03 200;
+    --popover: 0.18 0.06 215;
+    --popover-foreground: 0.92 0.03 200;
+    --primary: 0.72 0.22 195;
+    --primary-foreground: 0.08 0.02 220;
+    --secondary: 0.25 0.08 210;
+    --secondary-foreground: 0.75 0.1 200;
+    --muted: 0.22 0.05 215;
+    --muted-foreground: 0.65 0.06 210;
+    --accent: 0.75 0.2 180;
+    --accent-foreground: 0.08 0.02 220;
+    --destructive: 0.55 0.22 26;
+    --destructive-foreground: 1 0 0;
+    --border: 0.28 0.07 215;
+    --input: 0.25 0.06 215;
+    --ring: 0.72 0.22 195;
+    --game-cell-given: 0.22 0.06 215;
+    --game-cell-selected: 0.35 0.14 195;
+    --game-cell-highlight: 0.24 0.06 210;
+    --game-cell-error: 0.35 0.1 20;
+    --game-cell-hint: 0.28 0.08 145;
+    --game-cell-player: 0.72 0.22 195;
+  }
+
+  [data-theme="sunset"] {
+    --background: 0.18 0.06 40;
+    --foreground: 0.95 0.02 60;
+    --card: 0.22 0.06 35;
+    --card-foreground: 0.95 0.02 60;
+    --popover: 0.22 0.06 35;
+    --popover-foreground: 0.95 0.02 60;
+    --primary: 0.82 0.22 50;
+    --primary-foreground: 0.1 0.02 40;
+    --secondary: 0.28 0.08 40;
+    --secondary-foreground: 0.8 0.12 55;
+    --muted: 0.25 0.05 45;
+    --muted-foreground: 0.68 0.08 55;
+    --accent: 0.78 0.26 30;
+    --accent-foreground: 0.08 0.02 40;
+    --destructive: 0.55 0.22 26;
+    --destructive-foreground: 1 0 0;
+    --border: 0.32 0.08 40;
+    --input: 0.28 0.07 40;
+    --ring: 0.82 0.22 50;
+    --game-cell-given: 0.26 0.07 40;
+    --game-cell-selected: 0.4 0.15 50;
+    --game-cell-highlight: 0.28 0.06 45;
+    --game-cell-error: 0.35 0.12 20;
+    --game-cell-hint: 0.28 0.08 145;
+    --game-cell-player: 0.82 0.22 50;
+  }
+
+  [data-theme="retro"] {
+    --background: 0.08 0.04 240;
+    --foreground: 0.92 0.05 100;
+    --card: 0.11 0.04 240;
+    --card-foreground: 0.92 0.05 100;
+    --popover: 0.11 0.04 240;
+    --popover-foreground: 0.92 0.05 100;
+    --primary: 0.85 0.28 100;
+    --primary-foreground: 0.08 0.02 240;
+    --secondary: 0.15 0.06 240;
+    --secondary-foreground: 0.78 0.18 100;
+    --muted: 0.13 0.04 240;
+    --muted-foreground: 0.62 0.08 240;
+    --accent: 0.65 0.3 340;
+    --accent-foreground: 1 0 0;
+    --destructive: 0.55 0.22 26;
+    --destructive-foreground: 1 0 0;
+    --border: 0.22 0.08 240;
+    --input: 0.18 0.06 240;
+    --ring: 0.85 0.28 100;
+    --game-cell-given: 0.14 0.05 240;
+    --game-cell-selected: 0.28 0.12 100;
+    --game-cell-highlight: 0.16 0.05 240;
+    --game-cell-error: 0.28 0.1 20;
+    --game-cell-hint: 0.22 0.08 145;
+    --game-cell-player: 0.85 0.28 100;
+  }
+
+  [data-theme="nature"] {
+    --background: 0.16 0.05 145;
+    --foreground: 0.92 0.03 120;
+    --card: 0.2 0.06 145;
+    --card-foreground: 0.92 0.03 120;
+    --popover: 0.2 0.06 145;
+    --popover-foreground: 0.92 0.03 120;
+    --primary: 0.72 0.22 145;
+    --primary-foreground: 0.08 0.02 145;
+    --secondary: 0.26 0.07 145;
+    --secondary-foreground: 0.78 0.12 130;
+    --muted: 0.22 0.05 140;
+    --muted-foreground: 0.65 0.07 135;
+    --accent: 0.72 0.18 75;
+    --accent-foreground: 0.1 0.02 75;
+    --destructive: 0.55 0.22 26;
+    --destructive-foreground: 1 0 0;
+    --border: 0.28 0.08 145;
+    --input: 0.25 0.07 145;
+    --ring: 0.72 0.22 145;
+    --game-cell-given: 0.24 0.06 145;
+    --game-cell-selected: 0.35 0.14 145;
+    --game-cell-highlight: 0.26 0.06 140;
+    --game-cell-error: 0.32 0.1 20;
+    --game-cell-hint: 0.28 0.08 145;
+    --game-cell-player: 0.72 0.22 145;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: "Outfit", sans-serif;
+    transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: "Bricolage Grotesque", sans-serif;
+  }
+}
+
+@layer utilities {
+  .gradient-text {
+    background: linear-gradient(135deg, oklch(0.52 0.24 292), oklch(0.62 0.23 340), oklch(0.72 0.19 52));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .gradient-bg-purple-pink {
+    background: linear-gradient(135deg, oklch(0.52 0.24 292), oklch(0.62 0.23 340));
+  }
+
+  .gradient-bg-orange-pink {
+    background: linear-gradient(135deg, oklch(0.72 0.19 52), oklch(0.62 0.23 340));
+  }
+
+  .gradient-bg-blue-purple {
+    background: linear-gradient(135deg, oklch(0.57 0.22 220), oklch(0.52 0.24 292));
+  }
+
+  .gradient-bg-rainbow {
+    background: linear-gradient(135deg, oklch(0.52 0.24 292), oklch(0.62 0.23 340), oklch(0.72 0.19 52));
+  }
+
+  .glass-card {
+    background: oklch(var(--card) / 0.85);
+    backdrop-filter: blur(12px);
+    border: 1px solid oklch(var(--border) / 0.7);
+  }
+
+  .sudoku-cell {
+    aspect-ratio: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.12s ease;
+    position: relative;
+    user-select: none;
+    font-family: "Bricolage Grotesque", sans-serif;
+    font-weight: 600;
+    color: oklch(var(--foreground));
+  }
+
+  .sudoku-cell.given {
+    background: oklch(var(--game-cell-given));
+    color: oklch(var(--foreground));
+    font-weight: 700;
+    cursor: default;
+  }
+
+  .sudoku-cell.selected {
+    background: oklch(var(--game-cell-selected)) !important;
+    box-shadow: inset 0 0 0 2px oklch(var(--primary));
+  }
+
+  .sudoku-cell.highlighted {
+    background: oklch(var(--game-cell-highlight));
+  }
+
+  .sudoku-cell.error {
+    background: oklch(var(--game-cell-error)) !important;
+    color: oklch(var(--destructive)) !important;
+  }
+
+  .sudoku-cell.hint-cell {
+    background: oklch(var(--game-cell-hint)) !important;
+    color: oklch(var(--foreground)) !important;
+  }
+
+  .sudoku-cell.player-entry {
+    color: oklch(var(--game-cell-player));
+  }
+
+  /* Thick borders between 3x3 boxes */
+  .sudoku-grid {
+    display: grid;
+    grid-template-columns: repeat(9, 1fr);
+    border: 3px solid oklch(0.3 0.1 264);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .sudoku-cell:nth-child(3n):not(:nth-child(9n)) {
+    border-right: 2.5px solid oklch(0.3 0.1 264) !important;
+  }
+
+  .sudoku-row-3 .sudoku-cell,
+  .sudoku-row-6 .sudoku-cell {
+    border-bottom: 2.5px solid oklch(0.3 0.1 264) !important;
+  }
+
+  /* XP bar gradient animation */
+  @keyframes xp-fill {
+    from { width: 0%; }
+  }
+
+  .xp-bar-fill {
+    animation: xp-fill 1s ease-out;
+    background: linear-gradient(90deg, oklch(0.52 0.24 292), oklch(0.62 0.23 340), oklch(0.72 0.19 52));
+  }
+
+  /* Badge pulse animation for unlocked */
+  @keyframes badge-glow {
+    0%, 100% { box-shadow: 0 0 0 0 oklch(0.52 0.24 292 / 0.3); }
+    50% { box-shadow: 0 0 0 8px oklch(0.52 0.24 292 / 0); }
+  }
+
+  .badge-unlocked {
+    animation: badge-glow 2s ease-in-out infinite;
+  }
+
+  /* Number picker animation */
+  @keyframes picker-pop {
+    from { opacity: 0; transform: scale(0.85) translateY(4px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
+
+  .number-picker-popup {
+    animation: picker-pop 0.15s ease-out;
+  }
+
+  /* Checkmark animation */
+  @keyframes check-bounce {
+    0% { transform: scale(0); opacity: 0; }
+    60% { transform: scale(1.25); opacity: 1; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
+  .check-bounce {
+    animation: check-bounce 0.4s ease-out;
+  }
+
+  /* Confetti/complete animation */
+  @keyframes float-up {
+    from { transform: translateY(0) rotate(0deg); opacity: 1; }
+    to { transform: translateY(-80px) rotate(360deg); opacity: 0; }
+  }
+
+  .float-particle {
+    animation: float-up 1.5s ease-out forwards;
+  }
+
+  /* ============================================
+     ATMOSPHERIC THEME EFFECTS
+     ============================================ */
+
+  /* Ocean: subtle wave shimmer on overlay */
+  .theme-ocean-fx::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background: linear-gradient(180deg, transparent 60%, rgba(0, 50, 100, 0.15) 100%);
+    animation: ocean-wave 8s ease-in-out infinite alternate;
+  }
+
+  @keyframes ocean-wave {
+    from { opacity: 0.6; }
+    to { opacity: 1; }
+  }
+
+  /* Retro: scanline overlay */
+  .theme-retro-fx::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0, 0, 0, 0.08) 2px,
+      rgba(0, 0, 0, 0.08) 4px
+    );
+  }
+
+  /* Cyberpunk: subtle neon glow pulse */
+  .theme-cyberpunk-fx::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background: radial-gradient(ellipse at 50% 100%, rgba(255, 0, 200, 0.08) 0%, transparent 70%);
+    animation: cyber-pulse 4s ease-in-out infinite alternate;
+  }
+
+  @keyframes cyber-pulse {
+    from { opacity: 0.4; }
+    to { opacity: 1; }
+  }
+
+  /* Japan: soft pink gradient vignette */
+  .theme-japan-fx::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background: radial-gradient(ellipse at 50% 0%, rgba(255, 200, 220, 0.15) 0%, transparent 60%);
+  }
+
+  /* Nature: soft green ambient breathe */
+  .theme-nature-fx::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background: radial-gradient(ellipse at 30% 20%, rgba(100, 200, 80, 0.08) 0%, transparent 60%);
+    animation: nature-breathe 6s ease-in-out infinite alternate;
+  }
+
+  @keyframes nature-breathe {
+    from { opacity: 0.5; }
+    to { opacity: 1; }
+  }
+
+  /* Sunset: warm glow pulse */
+  .theme-sunset-fx::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background: radial-gradient(ellipse at 50% 110%, rgba(255, 120, 20, 0.1) 0%, transparent 60%);
+    animation: sunset-glow 5s ease-in-out infinite alternate;
+  }
+
+  @keyframes sunset-glow {
+    from { opacity: 0.5; }
+    to { opacity: 1; }
+  }
+}
