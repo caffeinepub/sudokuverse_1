@@ -219,6 +219,16 @@ export const translations = {
     badge_boss_slayer_desc: "Boss savaşını kazan",
     badge_star_perfect: "Yıldız Toplayıcı",
     badge_star_perfect_desc: "5 bulmacada 3 yıldız kazan",
+
+    // New feature keys
+    undo: "Geri Al",
+    autoNotes: "Oto-Not",
+    streak: "Seri",
+    streakDays: "Günlük Seri",
+    dailyBonus: "Günlük Bonus",
+    levelLabel: "Seviye",
+    levelUp: "Seviye Atladın!",
+    rankUp: "Rütbe Yükseldi!",
   },
 
   en: {
@@ -405,6 +415,16 @@ export const translations = {
     badge_boss_slayer_desc: "Win a boss battle",
     badge_star_perfect: "Star Collector",
     badge_star_perfect_desc: "Earn 3 stars on 5 puzzles",
+
+    // New feature keys
+    undo: "Undo",
+    autoNotes: "Auto-Notes",
+    streak: "Streak",
+    streakDays: "Daily Streak",
+    dailyBonus: "Daily Bonus",
+    levelLabel: "Level",
+    levelUp: "Level Up!",
+    rankUp: "Rank Up!",
   },
 
   de: {
@@ -560,6 +580,16 @@ export const translations = {
     badge_boss_slayer_desc: "Einen Boss-Kampf gewinnen",
     badge_star_perfect: "Sternsammler",
     badge_star_perfect_desc: "3 Sterne in 5 Rätseln verdienen",
+
+    // New feature keys
+    undo: "Rückgängig",
+    autoNotes: "Auto-Notizen",
+    streak: "Serie",
+    streakDays: "Tägliche Serie",
+    dailyBonus: "Tagesbonus",
+    levelLabel: "Level",
+    levelUp: "Level aufgestiegen!",
+    rankUp: "Rang aufgestiegen!",
   },
 
   fr: {
@@ -713,6 +743,16 @@ export const translations = {
     badge_boss_slayer_desc: "Gagner un combat de boss",
     badge_star_perfect: "Collecteur d'étoiles",
     badge_star_perfect_desc: "Gagner 3 étoiles dans 5 puzzles",
+
+    // New feature keys
+    undo: "Annuler",
+    autoNotes: "Notes Auto",
+    streak: "Série",
+    streakDays: "Série Quotidienne",
+    dailyBonus: "Bonus Quotidien",
+    levelLabel: "Niveau",
+    levelUp: "Niveau Supérieur!",
+    rankUp: "Rang Supérieur!",
   },
 
   es: {
@@ -866,6 +906,16 @@ export const translations = {
     badge_boss_slayer_desc: "Ganar una batalla de jefe",
     badge_star_perfect: "Coleccionista de estrellas",
     badge_star_perfect_desc: "Ganar 3 estrellas en 5 puzzles",
+
+    // New feature keys
+    undo: "Deshacer",
+    autoNotes: "Notas Auto",
+    streak: "Racha",
+    streakDays: "Racha Diaria",
+    dailyBonus: "Bono Diario",
+    levelLabel: "Nivel",
+    levelUp: "¡Subiste de Nivel!",
+    rankUp: "¡Rango Subido!",
   },
 
   it: {
@@ -1019,6 +1069,16 @@ export const translations = {
     badge_boss_slayer_desc: "Vinci una battaglia boss",
     badge_star_perfect: "Raccoglitore di stelle",
     badge_star_perfect_desc: "Guadagna 3 stelle in 5 puzzle",
+
+    // New feature keys
+    undo: "Annulla",
+    autoNotes: "Note Auto",
+    streak: "Serie",
+    streakDays: "Serie Giornaliera",
+    dailyBonus: "Bonus Giornaliero",
+    levelLabel: "Livello",
+    levelUp: "Livello Superiore!",
+    rankUp: "Rango Superiore!",
   },
 
   pt: {
@@ -1172,6 +1232,16 @@ export const translations = {
     badge_boss_slayer_desc: "Vencer uma batalha de boss",
     badge_star_perfect: "Colecionador de estrelas",
     badge_star_perfect_desc: "Ganhar 3 estrelas em 5 puzzles",
+
+    // New feature keys
+    undo: "Desfazer",
+    autoNotes: "Notas Auto",
+    streak: "Sequência",
+    streakDays: "Sequência Diária",
+    dailyBonus: "Bônus Diário",
+    levelLabel: "Nível",
+    levelUp: "Subiu de Nível!",
+    rankUp: "Nível Subiu!",
   },
 
   ru: {
@@ -1325,6 +1395,16 @@ export const translations = {
     badge_boss_slayer_desc: "Выиграть битву с боссом",
     badge_star_perfect: "Сборщик звёзд",
     badge_star_perfect_desc: "Заработать 3 звезды в 5 головоломках",
+
+    // New feature keys
+    undo: "Отменить",
+    autoNotes: "Авто-Заметки",
+    streak: "Серия",
+    streakDays: "Ежедневная Серия",
+    dailyBonus: "Ежедневный Бонус",
+    levelLabel: "Уровень",
+    levelUp: "Уровень Повышен!",
+    rankUp: "Ранг Повышен!",
   },
 
   ja: {
@@ -1478,6 +1558,16 @@ export const translations = {
     badge_boss_slayer_desc: "ボスバトルに勝利",
     badge_star_perfect: "スターコレクター",
     badge_star_perfect_desc: "5パズルで3スター獲得",
+
+    // New feature keys
+    undo: "元に戻す",
+    autoNotes: "自動メモ",
+    streak: "連続",
+    streakDays: "デイリーストリーク",
+    dailyBonus: "デイリーボーナス",
+    levelLabel: "レベル",
+    levelUp: "レベルアップ！",
+    rankUp: "ランクアップ！",
   },
 
   ko: {
@@ -1631,6 +1721,16 @@ export const translations = {
     badge_boss_slayer_desc: "보스 배틀 승리",
     badge_star_perfect: "스타 컬렉터",
     badge_star_perfect_desc: "5개 퍼즐에서 별 3개 획득",
+
+    // New feature keys
+    undo: "실행 취소",
+    autoNotes: "자동 메모",
+    streak: "연속",
+    streakDays: "일일 연속",
+    dailyBonus: "일일 보너스",
+    levelLabel: "레벨",
+    levelUp: "레벨 업!",
+    rankUp: "등급 상승!",
   },
 
   zh: {
@@ -1784,6 +1884,16 @@ export const translations = {
     badge_boss_slayer_desc: "赢得一场Boss战",
     badge_star_perfect: "星星收集者",
     badge_star_perfect_desc: "在5个谜题中获得3颗星",
+
+    // New feature keys
+    undo: "撤销",
+    autoNotes: "自动笔记",
+    streak: "连续",
+    streakDays: "每日连续",
+    dailyBonus: "每日奖励",
+    levelLabel: "等级",
+    levelUp: "升级了！",
+    rankUp: "等级提升！",
   },
 
   ar: {
@@ -1937,6 +2047,16 @@ export const translations = {
     badge_boss_slayer_desc: "الفوز بمعركة البوس",
     badge_star_perfect: "جامع النجوم",
     badge_star_perfect_desc: "كسب 3 نجوم في 5 ألغاز",
+
+    // New feature keys
+    undo: "تراجع",
+    autoNotes: "ملاحظات تلقائية",
+    streak: "سلسلة",
+    streakDays: "سلسلة يومية",
+    dailyBonus: "مكافأة يومية",
+    levelLabel: "المستوى",
+    levelUp: "ارتقيت مستوى!",
+    rankUp: "ارتقيت رتبة!",
   },
 
   hi: {
@@ -2090,6 +2210,16 @@ export const translations = {
     badge_boss_slayer_desc: "बॉस बैटल जीतें",
     badge_star_perfect: "स्टार कलेक्टर",
     badge_star_perfect_desc: "5 पहेलियों में 3 तारे अर्जित करें",
+
+    // New feature keys
+    undo: "पूर्ववत करें",
+    autoNotes: "ऑटो-नोट्स",
+    streak: "श्रृंखला",
+    streakDays: "दैनिक श्रृंखला",
+    dailyBonus: "दैनिक बोनस",
+    levelLabel: "स्तर",
+    levelUp: "स्तर बढ़ा!",
+    rankUp: "रैंक बढ़ी!",
   },
 } as const;
 

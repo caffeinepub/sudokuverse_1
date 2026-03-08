@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from "motion/react";
-import React from "react";
+import React, { useEffect } from "react";
+import { toast } from "sonner";
 import {
   DailyTaskType,
   type Difficulty,
@@ -8,6 +9,8 @@ import {
 import { useSound } from "../context/SoundContext";
 import { useTheme } from "../context/ThemeContext";
 import { useDailyTasks } from "../hooks/useDailyTasks";
+import { useLevelSystem } from "../hooks/useLevelSystem";
+import { useStreak } from "../hooks/useStreak";
 import { LANGUAGES, type Lang, useTranslation } from "../i18n";
 import { THEMES } from "../themes";
 import { XPBar, getRankInfo } from "./XPBar";
@@ -440,6 +443,22 @@ export function HomeScreen({
   const currentTheme = THEMES.find((th) => th.id === activeTheme);
   const currentLang = LANGUAGES.find((l) => l.code === lang);
   const { musicEnabled, toggleMusic } = useSound();
+  const { streak, isNewDay, bonusXP } = useStreak();
+  const { currentLevel } = useLevelSystem();
+
+  // Show daily streak toast on new day
+  useEffect(() => {
+    if (isNewDay && streak > 0) {
+      setTimeout(() => {
+        toast.success(
+          lang === "tr"
+            ? `🔥 ${streak} günlük seri! +${bonusXP} bonus XP`
+            : `🔥 ${streak}-day streak! +${bonusXP} bonus XP`,
+          { duration: 4000 },
+        );
+      }, 800);
+    }
+  }, [isNewDay, streak, bonusXP, lang]);
 
   const xp = Number(playerProfile?.xp ?? 0);
   const { rankName } = getRankInfo(xp, lang);
@@ -510,14 +529,41 @@ export function HomeScreen({
             </p>
           </motion.div>
 
-          {/* Rank badge */}
+          {/* Rank badge + Level + Streak */}
           <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             className="flex flex-col items-end gap-1"
           >
-            <div className="rounded-full px-3 py-1 text-sm font-bold gradient-bg-purple-pink text-white">
-              {isLoading ? "..." : rankName}
+            <div className="flex items-center gap-1.5">
+              {/* Streak pill */}
+              {streak > 0 && (
+                <div
+                  className="rounded-full px-2 py-0.5 text-xs font-bold"
+                  style={{
+                    background: "oklch(0.72 0.19 52 / 0.15)",
+                    color: "oklch(0.65 0.2 52)",
+                    border: "1.5px solid oklch(0.72 0.19 52 / 0.4)",
+                  }}
+                >
+                  🔥 {streak}
+                </div>
+              )}
+              {/* Level badge */}
+              <div
+                className="rounded-full px-2 py-0.5 text-xs font-bold"
+                style={{
+                  background: "oklch(0.57 0.22 220 / 0.15)",
+                  color: "oklch(0.52 0.22 220)",
+                  border: "1.5px solid oklch(0.57 0.22 220 / 0.4)",
+                }}
+              >
+                Lv.{currentLevel}
+              </div>
+              {/* Rank badge */}
+              <div className="rounded-full px-3 py-1 text-sm font-bold gradient-bg-purple-pink text-white">
+                {isLoading ? "..." : rankName}
+              </div>
             </div>
             {playerProfile && (
               <div

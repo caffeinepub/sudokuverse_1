@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Difficulty } from "../backend.d";
 import { useSound } from "../context/SoundContext";
 import { useDailyTasks } from "../hooks/useDailyTasks";
+import { useLevelSystem } from "../hooks/useLevelSystem";
 import { useModeStats } from "../hooks/useModeStats";
 import { useRecordPuzzleSolve } from "../hooks/usePlayerData";
 import { type Lang, useTranslation } from "../i18n";
@@ -16,6 +17,7 @@ import {
 } from "../sudokuEngine";
 import type { GameMode } from "../types/gameMode";
 import { SudokuBoard } from "./SudokuBoard";
+import { getRankInfo } from "./XPBar";
 
 // Badge display info
 const BADGE_INFO: Record<
@@ -145,6 +147,47 @@ function addStars(n: number) {
   localStorage.setItem(STAR_TOTAL_KEY, String(getStarTotal() + n));
 }
 
+// Pre-generated particle data (static, avoids random in render)
+const BOSS_PARTICLES = Array.from({ length: 20 }, (_, i) => ({
+  id: `bp-${i}`,
+  dx: ((i * 73 + 31) % 200) - 100,
+  dy: ((i * 53 + 17) % 200) - 100,
+  color: [
+    "oklch(0.72 0.19 52)",
+    "oklch(0.62 0.23 340)",
+    "oklch(0.57 0.22 220)",
+  ][i % 3],
+}));
+
+const RANKUP_PARTICLES = Array.from({ length: 16 }, (_, i) => ({
+  id: `rp-${i}`,
+  dx: ((i * 61 + 23) % 260) - 130,
+  dy: ((i * 47 + 11) % 260) - 130,
+  color: [
+    "oklch(0.72 0.19 52)",
+    "oklch(0.62 0.23 340)",
+    "oklch(0.52 0.24 292)",
+    "oklch(0.68 0.2 145)",
+  ][i % 4],
+}));
+
+// Pre-generated confetti pieces
+const CONFETTI_PIECES = Array.from({ length: 40 }, (_, i) => ({
+  id: `conf-${i}`,
+  x: (i * 257 + 13) % 100,
+  delay: ((i * 37) % 50) / 100,
+  duration: 1.5 + ((i * 31) % 100) / 100,
+  color: [
+    "oklch(0.72 0.19 52)",
+    "oklch(0.62 0.23 340)",
+    "oklch(0.52 0.24 292)",
+    "oklch(0.57 0.22 220)",
+    "oklch(0.68 0.2 145)",
+  ][i % 5],
+  size: 6 + ((i * 19) % 80) / 10,
+  rotation: (i * 137) % 360,
+}));
+
 // ---- Boss Battle helpers ----
 function countEmptyCells(puzzle: Grid): number {
   let count = 0;
@@ -181,6 +224,7 @@ export function GameScreen({
   const { playSound } = useSound();
   const { onPuzzleSolved } = useDailyTasks();
   const { recordModeResult } = useModeStats();
+  const { advanceLevel } = useLevelSystem();
 
   // Track if note mode was used this game
   const noteModeUsedRef = useRef(false);
@@ -239,6 +283,32 @@ export function GameScreen({
   // --- Daily Tournament ---
   const [tournamentScore, setTournamentScore] = useState(0);
   const [alreadyPlayed, setAlreadyPlayed] = useState(false);
+
+  // --- New Features ---
+  // Undo history
+  type MoveHistoryEntry = {
+    row: number;
+    col: number;
+    prevValue: number;
+    prevNotes: Map<string, Set<number>>;
+    prevErrors: Set<string>;
+  };
+  const [moveHistory, setMoveHistory] = useState<MoveHistoryEntry[]>([]);
+
+  // Highlighted number (same-number highlighting)
+  const [highlightedNumber, setHighlightedNumber] = useState<number | null>(
+    null,
+  );
+
+  // Confetti
+  const [showConfetti, setShowConfetti] = useState(false);
+
+  // Rank-up celebration
+  const [showRankUp, setShowRankUp] = useState(false);
+  const [rankUpInfo, setRankUpInfo] = useState<{
+    oldRank: string;
+    newRank: string;
+  } | null>(null);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const recordModeResultRef = useRef(recordModeResult);
@@ -363,7 +433,7 @@ export function GameScreen({
   }, [gameMode, isLoading, isPaused, isComplete]);
 
   const handleComplete = useCallback(
-    (finalPuzzle: Grid) => {
+    (finalPuzzle: Grid, currentXP = 0) => {
       void finalPuzzle;
       setIsComplete(true);
       if (timerRef.current) clearInterval(timerRef.current);
@@ -398,6 +468,19 @@ export function GameScreen({
         saveTournamentScore(score);
       }
 
+      // Level system: advance on solve
+      const levelAdvanced = advanceLevel(effectiveDifficulty);
+      if (levelAdvanced) {
+        setTimeout(() => {
+          toast.success(
+            lang === "tr"
+              ? "🎯 Seviye Atladın! +1 Seviye"
+              : "🎯 Level Up! +1 Level",
+            { duration: 3000 },
+          );
+        }, 1200);
+      }
+
       let starsForThisGame = 0;
       if (gameMode === "star_collector") {
         let stars = 1;
@@ -406,19 +489,51 @@ export function GameScreen({
         starsForThisGame = stars;
         setStarsEarned(stars);
         addStars(stars);
+        setTimeout(() => {
+          setShowConfetti(true);
+          setTimeout(() => setShowConfetti(false), 3000);
+        }, 100);
         setTimeout(() => setShowStars(true), 300);
       }
       if (gameMode === "boss_battle") {
         playSound("boss_defeated");
-        setTimeout(() => setShowBossDefeated(true), 400);
+        // Show boss defeated with particle explosion after 800ms
+        setTimeout(() => setShowBossDefeated(true), 800);
+        // Confetti for boss defeat
+        setTimeout(() => {
+          setShowConfetti(true);
+          setTimeout(() => setShowConfetti(false), 3000);
+        }, 100);
       } else {
         playSound("puzzle_complete");
+        // Confetti for normal completion
+        if (gameMode !== "star_collector") {
+          setTimeout(() => {
+            setShowConfetti(true);
+            setTimeout(() => setShowConfetti(false), 3000);
+          }, 200);
+        }
       }
 
       // Play XP gain sound after a small delay
       setTimeout(() => playSound("xp_gain"), 700);
 
       setEarnedXP(xp);
+
+      // Rank-up detection
+      const prevRankInfo = getRankInfo(currentXP, lang);
+      const newRankInfo = getRankInfo(currentXP + xp, lang);
+      if (newRankInfo.rankIndex > prevRankInfo.rankIndex) {
+        setRankUpInfo({
+          oldRank: prevRankInfo.rankName,
+          newRank: newRankInfo.rankName,
+        });
+        setTimeout(() => {
+          setShowRankUp(true);
+          playSound("badge_unlock");
+        }, 1500);
+        setTimeout(() => setShowRankUp(false), 5000);
+      }
 
       // Track daily tasks & weekly challenges
       onPuzzleSolved({
@@ -496,6 +611,7 @@ export function GameScreen({
       playSound,
       onPuzzleSolved,
       recordModeResult,
+      advanceLevel,
       lang,
     ],
   );
@@ -523,6 +639,17 @@ export function GameScreen({
   const handleCellChange = useCallback(
     (row: number, col: number, value: number, isNote = false) => {
       if (isNote) {
+        // Save history for note changes too
+        setMoveHistory((prev) => {
+          const entry: MoveHistoryEntry = {
+            row,
+            col,
+            prevValue: puzzle[row]?.[col] ?? 0,
+            prevNotes: new Map(notes),
+            prevErrors: new Set(errorCells),
+          };
+          return [...prev.slice(-29), entry];
+        });
         setNotes((prev) => {
           const next = new Map(prev);
           const key = `${row}-${col}`;
@@ -540,6 +667,23 @@ export function GameScreen({
           return next;
         });
         return;
+      }
+
+      // Save to history before applying
+      setMoveHistory((prev) => {
+        const entry: MoveHistoryEntry = {
+          row,
+          col,
+          prevValue: puzzle[row]?.[col] ?? 0,
+          prevNotes: new Map(notes),
+          prevErrors: new Set(errorCells),
+        };
+        return [...prev.slice(-29), entry];
+      });
+
+      // Update highlighted number on input
+      if (value !== 0) {
+        setHighlightedNumber(value);
       }
 
       // Play number_enter on every digit entry
@@ -626,7 +770,7 @@ export function GameScreen({
         handleComplete(newPuzzle);
       }
     },
-    [puzzle, solution, gameMode, handleComplete, playSound],
+    [puzzle, solution, gameMode, handleComplete, playSound, notes, errorCells],
   );
 
   const handleHint = useCallback(() => {
@@ -669,6 +813,110 @@ export function GameScreen({
       handleComplete(newPuzzle);
     }
   }, [hintsLeft, puzzle, solution, originalPuzzle, handleComplete, playSound]);
+
+  const handleUndo = useCallback(() => {
+    setMoveHistory((prev) => {
+      if (prev.length === 0) return prev;
+      const last = prev[prev.length - 1];
+      const next = prev.slice(0, -1);
+
+      // Restore puzzle
+      setPuzzle((currentPuzzle) => {
+        const restored = currentPuzzle.map((row) => [...row]);
+        restored[last.row][last.col] = last.prevValue;
+        return restored;
+      });
+      // Restore notes
+      setNotes(new Map(last.prevNotes));
+      // Restore errors
+      setErrorCells(new Set(last.prevErrors));
+
+      return next;
+    });
+  }, []);
+
+  const handleAutoNotes = useCallback(() => {
+    const newNotes = new Map<string, Set<number>>();
+    for (let r = 0; r < 9; r++) {
+      for (let c = 0; c < 9; c++) {
+        if (puzzle[r][c] !== 0) continue;
+        if (originalPuzzle[r][c] !== 0) continue;
+        const candidates = new Set<number>();
+        for (let num = 1; num <= 9; num++) {
+          let valid = true;
+          // Check row
+          for (let cc = 0; cc < 9; cc++) {
+            if (puzzle[r][cc] === num) {
+              valid = false;
+              break;
+            }
+          }
+          if (!valid) continue;
+          // Check col
+          for (let rr = 0; rr < 9; rr++) {
+            if (puzzle[rr][c] === num) {
+              valid = false;
+              break;
+            }
+          }
+          if (!valid) continue;
+          // Check box
+          const boxR = Math.floor(r / 3) * 3;
+          const boxC = Math.floor(c / 3) * 3;
+          for (let rr = boxR; rr < boxR + 3; rr++) {
+            for (let cc = boxC; cc < boxC + 3; cc++) {
+              if (puzzle[rr][cc] === num) {
+                valid = false;
+              }
+            }
+          }
+          if (valid) candidates.add(num);
+        }
+        if (candidates.size > 0) {
+          newNotes.set(`${r}-${c}`, candidates);
+        }
+      }
+    }
+    setNotes(newNotes);
+    toast.success(
+      lang === "tr"
+        ? "🔢 Aday rakamlar otomatik dolduruldu!"
+        : "🔢 Candidate numbers filled automatically!",
+      { duration: 2000 },
+    );
+  }, [puzzle, originalPuzzle, lang]);
+
+  // Confetti component
+  function ConfettiEffect({ active }: { active: boolean }) {
+    if (!active) return null;
+    return (
+      <div className="fixed inset-0 pointer-events-none z-40 overflow-hidden">
+        {CONFETTI_PIECES.map((p) => (
+          <motion.div
+            key={p.id}
+            className="absolute rounded-sm"
+            initial={{
+              top: "-5%",
+              left: `${p.x}%`,
+              opacity: 1,
+              rotate: p.rotation,
+            }}
+            animate={{
+              top: "110%",
+              opacity: [1, 1, 0],
+              rotate: p.rotation + 720,
+            }}
+            transition={{
+              duration: p.duration,
+              delay: p.delay,
+              ease: "easeIn",
+            }}
+            style={{ width: p.size, height: p.size, background: p.color }}
+          />
+        ))}
+      </div>
+    );
+  }
 
   const difficultyColors: Record<Difficulty, string> = {
     [Difficulty.easy]: "oklch(0.68 0.2 145)",
@@ -799,6 +1047,9 @@ export function GameScreen({
         background: "transparent",
       }}
     >
+      {/* Confetti */}
+      <ConfettiEffect active={showConfetti} />
+
       {/* Chain Flash Overlay */}
       <AnimatePresence>
         {chainFlash && (
@@ -1161,6 +1412,8 @@ export function GameScreen({
             blindHidden={
               gameMode === "blind" && isBlind ? blindHidden : undefined
             }
+            highlightedNumber={highlightedNumber ?? undefined}
+            onCellSelect={(val) => setHighlightedNumber(val)}
           />
         )}
       </main>
@@ -1214,6 +1467,39 @@ export function GameScreen({
             <span className="text-xs font-semibold">
               {t("hints")} ({hintsLeft})
             </span>
+          </button>
+
+          {/* Undo button */}
+          <button
+            type="button"
+            data-ocid="game.undo_button"
+            onClick={handleUndo}
+            disabled={moveHistory.length === 0}
+            className="flex flex-col items-center gap-0.5 rounded-2xl px-3 py-2 transition-all hover:scale-105 disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{
+              background: "oklch(var(--secondary))",
+              color: "oklch(var(--primary))",
+              minWidth: "60px",
+            }}
+          >
+            <span className="text-lg">↩️</span>
+            <span className="text-xs font-semibold">{t("undo")}</span>
+          </button>
+
+          {/* Auto-Notes button */}
+          <button
+            type="button"
+            data-ocid="game.autonotes_button"
+            onClick={handleAutoNotes}
+            className="flex flex-col items-center gap-0.5 rounded-2xl px-3 py-2 transition-all hover:scale-105"
+            style={{
+              background: "oklch(var(--secondary))",
+              color: "oklch(var(--primary))",
+              minWidth: "60px",
+            }}
+          >
+            <span className="text-lg">🔢</span>
+            <span className="text-xs font-semibold">{t("autoNotes")}</span>
           </button>
 
           {/* Chain mode exit */}
@@ -1771,6 +2057,20 @@ export function GameScreen({
                   "linear-gradient(135deg, oklch(0.12 0.06 20), oklch(0.3 0.18 30))",
               }}
             >
+              {/* Particle explosion */}
+              <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                {BOSS_PARTICLES.map((p, i) => (
+                  <motion.div
+                    key={p.id}
+                    className="absolute w-2 h-2 rounded-full"
+                    style={{ top: "50%", left: "50%", background: p.color }}
+                    initial={{ x: 0, y: 0, opacity: 1, scale: 1 }}
+                    animate={{ x: p.dx * 3, y: p.dy * 3, opacity: 0, scale: 0 }}
+                    transition={{ duration: 0.8, delay: i * 0.02 }}
+                  />
+                ))}
+              </div>
+
               {/* Flash overlay */}
               <motion.div
                 initial={{ opacity: 0.6 }}
@@ -1783,7 +2083,7 @@ export function GameScreen({
                 initial={{ scale: 0 }}
                 animate={{ scale: [1, 1.3, 1] }}
                 transition={{ delay: 0.2, duration: 0.6 }}
-                className="text-6xl mb-3"
+                className="text-6xl mb-3 relative"
               >
                 💀
               </motion.div>
@@ -1791,7 +2091,7 @@ export function GameScreen({
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.4 }}
-                className="text-3xl font-black font-display text-white mb-2"
+                className="text-3xl font-black font-display text-white mb-2 relative"
               >
                 {t("bossDefeated")}
               </motion.h2>
@@ -1799,7 +2099,7 @@ export function GameScreen({
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: 0.6 }}
-                className="space-y-1 mb-6"
+                className="space-y-1 mb-6 relative"
               >
                 <div className="text-white/70 text-sm">{formatTime(timer)}</div>
                 <div className="text-white/70 text-sm">+{earnedXP} XP</div>
@@ -1811,10 +2111,145 @@ export function GameScreen({
                 animate={{ opacity: 1 }}
                 transition={{ delay: 0.8 }}
                 onClick={onBack}
-                className="w-full bg-white font-bold py-4 rounded-2xl text-lg"
+                className="w-full bg-white font-bold py-4 rounded-2xl text-lg relative"
                 style={{ color: "oklch(0.35 0.15 20)" }}
               >
                 🏆 {t("backToHome")}
+              </motion.button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Rank Up Celebration Overlay */}
+      <AnimatePresence>
+        {showRankUp && rankUpInfo && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+            style={{
+              background: "oklch(0 0 0 / 0.8)",
+              backdropFilter: "blur(8px)",
+            }}
+            onClick={() => setShowRankUp(false)}
+          >
+            {/* Shimmer effect */}
+            <motion.div
+              className="absolute inset-0 pointer-events-none"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: [0, 0.3, 0, 0.2, 0] }}
+              transition={{ duration: 2, repeat: Number.POSITIVE_INFINITY }}
+              style={{
+                background:
+                  "linear-gradient(135deg, oklch(0.72 0.19 52 / 0.3), oklch(0.62 0.23 340 / 0.3), transparent)",
+              }}
+            />
+
+            <motion.div
+              data-ocid="game.rankup.modal"
+              initial={{ scale: 0.5, y: 60 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.8, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 220, damping: 20 }}
+              className="w-full max-w-sm rounded-3xl p-8 text-center shadow-2xl relative overflow-hidden"
+              style={{
+                background:
+                  "linear-gradient(135deg, oklch(0.15 0.08 280), oklch(0.28 0.16 300))",
+              }}
+            >
+              {/* Particle burst */}
+              <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                {RANKUP_PARTICLES.map((p, i) => (
+                  <motion.div
+                    key={p.id}
+                    className="absolute rounded-full"
+                    style={{
+                      top: "50%",
+                      left: "50%",
+                      width: 8,
+                      height: 8,
+                      background: p.color,
+                    }}
+                    initial={{ x: 0, y: 0, opacity: 1, scale: 1 }}
+                    animate={{ x: p.dx * 2, y: p.dy * 2, opacity: 0, scale: 0 }}
+                    transition={{ duration: 1, delay: i * 0.03 }}
+                  />
+                ))}
+              </div>
+
+              <motion.div
+                initial={{ scale: 0, rotate: -20 }}
+                animate={{ scale: 1, rotate: 0 }}
+                transition={{ delay: 0.1, type: "spring", stiffness: 300 }}
+                className="text-6xl mb-4 relative"
+              >
+                🏆
+              </motion.div>
+
+              <motion.h2
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="text-2xl font-black font-display text-white mb-5"
+              >
+                {t("rankUp")}
+              </motion.h2>
+
+              <motion.div
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 0.35 }}
+                className="flex items-center justify-center gap-4 mb-6"
+              >
+                <div
+                  className="rounded-2xl px-4 py-2 text-sm font-bold"
+                  style={{
+                    background: "oklch(1 0 0 / 0.1)",
+                    color: "oklch(0.85 0.05 280)",
+                  }}
+                >
+                  {rankUpInfo.oldRank}
+                </div>
+                <motion.span
+                  initial={{ scale: 0 }}
+                  animate={{ scale: [0, 1.5, 1] }}
+                  transition={{ delay: 0.5, duration: 0.4 }}
+                  className="text-2xl"
+                >
+                  →
+                </motion.span>
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: [0, 1.2, 1] }}
+                  transition={{ delay: 0.6, type: "spring", stiffness: 300 }}
+                  className="rounded-2xl px-4 py-2 text-sm font-black"
+                  style={{
+                    background:
+                      "linear-gradient(135deg, oklch(0.72 0.19 52), oklch(0.62 0.23 340))",
+                    color: "white",
+                  }}
+                >
+                  {rankUpInfo.newRank}
+                </motion.div>
+              </motion.div>
+
+              <motion.button
+                type="button"
+                data-ocid="game.rankup.close_button"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.8 }}
+                onClick={() => setShowRankUp(false)}
+                className="w-full font-bold py-3 rounded-2xl text-sm relative"
+                style={{
+                  background: "oklch(1 0 0 / 0.15)",
+                  color: "white",
+                  border: "1.5px solid oklch(1 0 0 / 0.25)",
+                }}
+              >
+                {lang === "tr" ? "Harika! 🎉" : "Awesome! 🎉"}
               </motion.button>
             </motion.div>
           </motion.div>

@@ -132,6 +132,8 @@ interface SudokuBoardProps {
   hintCells: Set<string>;
   isComplete: boolean;
   blindHidden?: Set<string>;
+  highlightedNumber?: number;
+  onCellSelect?: (value: number) => void;
 }
 
 export function SudokuBoard({
@@ -145,6 +147,8 @@ export function SudokuBoard({
   hintCells,
   isComplete,
   blindHidden,
+  highlightedNumber,
+  onCellSelect,
 }: SudokuBoardProps) {
   const [selectedCell, setSelectedCell] = useState<[number, number] | null>(
     null,
@@ -159,7 +163,23 @@ export function SudokuBoard({
       const isGiven = originalPuzzle[row][col] !== 0;
       const cellKey = `${row}-${col}`;
       const isBlindHiddenCell = blindHidden?.has(cellKey) ?? false;
-      if (isGiven && !isBlindHiddenCell) return;
+
+      // For given cells (not hidden), just notify parent of the cell value for highlighting
+      if (isGiven && !isBlindHiddenCell) {
+        const cellValue = puzzle[row][col];
+        if (cellValue !== 0 && onCellSelect) {
+          onCellSelect(cellValue);
+        }
+        return;
+      }
+
+      // Notify parent about the cell's current value for highlighting
+      const cellValue = puzzle[row][col];
+      if (cellValue !== 0 && onCellSelect) {
+        onCellSelect(cellValue);
+      } else if (onCellSelect) {
+        onCellSelect(0);
+      }
 
       // If clicking the same cell that's already selected and picker is open, close picker
       if (
@@ -180,7 +200,15 @@ export function SudokuBoard({
         y: rect.bottom,
       });
     },
-    [isComplete, originalPuzzle, selectedCell, pickerPos, blindHidden],
+    [
+      isComplete,
+      originalPuzzle,
+      selectedCell,
+      pickerPos,
+      blindHidden,
+      puzzle,
+      onCellSelect,
+    ],
   );
 
   const handleNumberSelect = useCallback(
@@ -205,6 +233,14 @@ export function SudokuBoard({
     const isSelected = selectedCell?.[0] === row && selectedCell?.[1] === col;
     const isError = errorCells.has(cellKey);
     const isHint = hintCells.has(cellKey);
+    const cell = puzzle[row]?.[col];
+    const isSameNumber =
+      highlightedNumber !== undefined &&
+      highlightedNumber !== 0 &&
+      cell === highlightedNumber &&
+      !isSelected &&
+      !isError &&
+      !isHint;
 
     let classes = "sudoku-cell";
 
@@ -223,6 +259,8 @@ export function SudokuBoard({
     } else if (!isGiven) {
       classes += " player-entry";
     }
+
+    if (isSameNumber) classes += " same-number";
 
     return classes;
   };
