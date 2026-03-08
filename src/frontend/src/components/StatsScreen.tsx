@@ -1,8 +1,113 @@
 import { motion } from "motion/react";
-import React from "react";
+import React, { useMemo } from "react";
 import type { PlayerProfile } from "../backend.d";
 import { loadModeStats } from "../hooks/useModeStats";
 import { type Lang, useTranslation } from "../i18n";
+
+// ---- Mini bar chart for mode stats ----
+function MiniBarChart({
+  values,
+  labels,
+  color,
+  max,
+}: {
+  values: number[];
+  labels: string[];
+  color: string;
+  max?: number;
+}) {
+  const effectiveMax = max ?? Math.max(...values, 1);
+  return (
+    <div className="flex items-end gap-1 h-16">
+      {values.map((v, i) => {
+        const pct = Math.min(1, v / effectiveMax);
+        return (
+          <div
+            key={labels[i]}
+            className="flex flex-col items-center flex-1 gap-0.5"
+          >
+            <span
+              className="text-xs font-bold"
+              style={{ color, fontSize: "9px" }}
+            >
+              {v > 0 ? v : ""}
+            </span>
+            <div
+              className="w-full rounded-t-sm transition-all duration-700"
+              style={{
+                height: `${Math.max(pct * 48, v > 0 ? 4 : 0)}px`,
+                background: v > 0 ? color : "oklch(var(--border))",
+                opacity: v > 0 ? 1 : 0.3,
+              }}
+            />
+            <span
+              className="text-center leading-tight"
+              style={{
+                color: "oklch(var(--muted-foreground))",
+                fontSize: "8px",
+              }}
+            >
+              {labels[i]}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ---- Donut chart for win rate ----
+function WinRateDonut({
+  won,
+  played,
+  color,
+  size = 60,
+}: {
+  won: number;
+  played: number;
+  color: string;
+  size?: number;
+}) {
+  const pct = played > 0 ? won / played : 0;
+  const radius = (size - 8) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const strokeDashoffset = circumference * (1 - pct);
+  return (
+    <div
+      className="relative flex items-center justify-center"
+      style={{ width: size, height: size }}
+    >
+      <svg width={size} height={size} className="-rotate-90" aria-hidden="true">
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke="oklch(var(--border))"
+          strokeWidth={6}
+        />
+        <motion.circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke={color}
+          strokeWidth={6}
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          initial={{ strokeDashoffset: circumference }}
+          animate={{ strokeDashoffset }}
+          transition={{ duration: 1.2, ease: "easeOut" }}
+        />
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <span className="font-black text-xs" style={{ color }}>
+          {Math.round(pct * 100)}%
+        </span>
+      </div>
+    </div>
+  );
+}
 
 interface StatsScreenProps {
   lang: Lang;
@@ -64,6 +169,55 @@ export function StatsScreen({ lang, playerProfile, onBack }: StatsScreenProps) {
       bg: "oklch(var(--secondary))",
     },
   ];
+
+  // Chart data: played count per mode
+  const modePlayedData = useMemo(
+    () => ({
+      values: [
+        modeStats.classic.played,
+        modeStats.speed_rush.played,
+        modeStats.survival.played,
+        modeStats.chain.played,
+        modeStats.star_collector.played,
+        modeStats.boss_battle.played,
+        modeStats.blind.played,
+      ],
+      labels: ["♟️", "⚡", "❤️", "⛓️", "⭐", "🐉", "👁️"],
+    }),
+    [modeStats],
+  );
+
+  // Win rate data for modes that have won/played
+  const winRateModes = useMemo(
+    () =>
+      [
+        {
+          name: lang === "tr" ? "Klasik" : "Classic",
+          won: modeStats.classic.won,
+          played: modeStats.classic.played,
+          color: "oklch(0.57 0.22 220)",
+        },
+        {
+          name: lang === "tr" ? "Hayatta Kalma" : "Survival",
+          won: modeStats.survival.won,
+          played: modeStats.survival.played,
+          color: "oklch(0.5 0.23 0)",
+        },
+        {
+          name: lang === "tr" ? "Boss" : "Boss",
+          won: modeStats.boss_battle.won,
+          played: modeStats.boss_battle.played,
+          color: "oklch(0.45 0.15 20)",
+        },
+        {
+          name: lang === "tr" ? "Kör Mod" : "Blind",
+          won: modeStats.blind.won,
+          played: modeStats.blind.played,
+          color: "oklch(0.3 0.15 275)",
+        },
+      ].filter((m) => m.played > 0),
+    [modeStats, lang],
+  );
 
   const modeCards = [
     {
@@ -402,6 +556,83 @@ export function StatsScreen({ lang, playerProfile, onBack }: StatsScreenProps) {
             ))}
           </div>
         </motion.div>
+
+        {/* Mod Oynanma Grafiği */}
+        {modePlayedData.values.some((v) => v > 0) && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.35 }}
+            className="rounded-2xl p-5"
+            style={{
+              background: "oklch(var(--card))",
+              border: "1.5px solid oklch(var(--border))",
+              boxShadow: "0 2px 12px oklch(var(--primary) / 0.06)",
+            }}
+          >
+            <h2
+              className="font-bold font-display text-base mb-4"
+              style={{ color: "oklch(var(--card-foreground))" }}
+            >
+              📊 {lang === "tr" ? "Mod Oynanma Grafiği" : "Plays per Mode"}
+            </h2>
+            <MiniBarChart
+              values={modePlayedData.values}
+              labels={modePlayedData.labels}
+              color="oklch(var(--primary))"
+            />
+          </motion.div>
+        )}
+
+        {/* Win Rate Donut Charts */}
+        {winRateModes.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
+            className="rounded-2xl p-5"
+            style={{
+              background: "oklch(var(--card))",
+              border: "1.5px solid oklch(var(--border))",
+              boxShadow: "0 2px 12px oklch(var(--primary) / 0.06)",
+            }}
+          >
+            <h2
+              className="font-bold font-display text-base mb-4"
+              style={{ color: "oklch(var(--card-foreground))" }}
+            >
+              🏆 {lang === "tr" ? "Kazanma Oranı" : "Win Rate"}
+            </h2>
+            <div className="flex flex-wrap gap-4 justify-around">
+              {winRateModes.map((m) => (
+                <div key={m.name} className="flex flex-col items-center gap-1">
+                  <WinRateDonut
+                    won={m.won}
+                    played={m.played}
+                    color={m.color}
+                    size={56}
+                  />
+                  <span
+                    className="text-xs font-semibold text-center"
+                    style={{
+                      color: "oklch(var(--muted-foreground))",
+                      maxWidth: "56px",
+                      lineHeight: "1.2",
+                    }}
+                  >
+                    {m.name}
+                  </span>
+                  <span
+                    className="text-xs font-bold"
+                    style={{ color: m.color }}
+                  >
+                    {m.won}/{m.played}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
 
         {totalSolved === 0 && (
           <motion.div

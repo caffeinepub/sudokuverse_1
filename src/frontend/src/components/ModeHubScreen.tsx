@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from "motion/react";
 import React, { useState } from "react";
 import { Difficulty, type PlayerProfile } from "../backend.d";
+import { getLevelTier, useLevelSystem } from "../hooks/useLevelSystem";
 import { type Lang, useTranslation } from "../i18n";
 import type { GameMode } from "../types/gameMode";
 
@@ -153,8 +154,10 @@ export function ModeHubScreen({
   onBack,
 }: ModeHubScreenProps) {
   const t = useTranslation(lang);
+  const { currentLevel } = useLevelSystem();
+  const recommendedDifficulty = getLevelTier(currentLevel);
   const [selectedDifficulty, setSelectedDifficulty] = useState<Difficulty>(
-    Difficulty.medium,
+    recommendedDifficulty,
   );
   const [hoveredMode, setHoveredMode] = useState<GameMode | null>(null);
 
@@ -223,10 +226,31 @@ export function ModeHubScreen({
           </h1>
         </div>
 
+        {/* Level guidance banner */}
+        <motion.div
+          initial={{ opacity: 0, y: -6 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex items-center gap-2 mb-2 px-3 py-1.5 rounded-xl text-xs font-semibold"
+          style={{
+            background: "oklch(0.57 0.22 220 / 0.12)",
+            border: "1.5px solid oklch(0.57 0.22 220 / 0.3)",
+            color: "oklch(0.52 0.22 220)",
+          }}
+        >
+          <span className="font-black">Lv.{currentLevel}</span>
+          <span style={{ color: "oklch(var(--muted-foreground))" }}>·</span>
+          <span style={{ color: "oklch(var(--foreground))" }}>
+            {lang === "tr"
+              ? `Önerilen seviye: ${DIFFICULTY_CONFIG.find((d) => d.key === recommendedDifficulty)?.label.tr ?? ""}`
+              : `Recommended: ${DIFFICULTY_CONFIG.find((d) => d.key === recommendedDifficulty)?.label.en ?? ""}`}
+          </span>
+        </motion.div>
+
         {/* Difficulty selector */}
         <div className="grid grid-cols-5 gap-1.5">
           {DIFFICULTY_CONFIG.map(({ key, emoji, color, bg, label }) => {
             const isSelected = selectedDifficulty === key;
+            const isRecommended = key === recommendedDifficulty;
             return (
               <motion.button
                 type="button"
@@ -235,14 +259,23 @@ export function ModeHubScreen({
                 onClick={() => setSelectedDifficulty(key)}
                 whileHover={{ scale: 1.06 }}
                 whileTap={{ scale: 0.94 }}
-                className="flex flex-col items-center gap-0.5 rounded-xl p-2 transition-all"
+                className="relative flex flex-col items-center gap-0.5 rounded-xl p-2 transition-all"
                 style={{
                   background: isSelected ? color : bg,
                   color: isSelected ? "oklch(0.98 0.005 0)" : color,
-                  border: `2px solid ${isSelected ? color : "transparent"}`,
+                  border: `2px solid ${isSelected ? color : isRecommended ? color : "transparent"}`,
                   boxShadow: isSelected ? `0 4px 12px ${color}44` : "none",
                 }}
               >
+                {isRecommended && !isSelected && (
+                  <span
+                    className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full"
+                    style={{
+                      background: color,
+                      border: "1.5px solid oklch(var(--background))",
+                    }}
+                  />
+                )}
                 <span className="text-base">{emoji}</span>
                 <span className="text-xs font-bold leading-none">
                   {label[lang]}

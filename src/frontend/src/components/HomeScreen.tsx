@@ -101,6 +101,74 @@ const WEEKLY_CHALLENGES = [
 
 const WEEKLY_CHALLENGE_EMOJIS = ["🧩", "💪", "🔥", "⚡", "⛓️", "🎯", "🌈"];
 
+// Weekly challenge progress targets (must match useDailyTasks thresholds)
+const WEEKLY_CHALLENGE_PROGRESS: { current: () => number; target: number }[] = [
+  {
+    // weekly_task_1: solve >= 7 puzzles this week
+    current: () => {
+      try {
+        const raw = localStorage.getItem("sudokuverse_weekly_solve_count_v2");
+        if (raw) {
+          const p = JSON.parse(raw) as { weekKey: string; count: number };
+          const d = new Date();
+          const jan4 = new Date(d.getFullYear(), 0, 4);
+          const week = Math.ceil(
+            ((d.getTime() - jan4.getTime()) / 86400000 + jan4.getDay() + 1) / 7,
+          );
+          const wk = `${d.getFullYear()}-W${week.toString().padStart(2, "0")}`;
+          if (p.weekKey === wk) return p.count;
+        }
+      } catch (_) {}
+      return 0;
+    },
+    target: 7,
+  },
+  {
+    // weekly_task_2: 3 hard+ puzzles
+    current: () => {
+      try {
+        const raw = localStorage.getItem("sudokuverse_weekly_hard_solves_v2");
+        if (raw) {
+          const p = JSON.parse(raw) as { weekKey: string; count: number };
+          const d = new Date();
+          const jan4 = new Date(d.getFullYear(), 0, 4);
+          const week = Math.ceil(
+            ((d.getTime() - jan4.getTime()) / 86400000 + jan4.getDay() + 1) / 7,
+          );
+          const wk = `${d.getFullYear()}-W${week.toString().padStart(2, "0")}`;
+          if (p.weekKey === wk) return p.count;
+        }
+      } catch (_) {}
+      return 0;
+    },
+    target: 3,
+  },
+  { current: () => 0, target: 1 }, // weekly_task_3: all daily tasks (boolean)
+  { current: () => 0, target: 1 }, // weekly_task_4: speed_rush (boolean)
+  { current: () => 0, target: 1 }, // weekly_task_5: chain >= 5 (boolean)
+  { current: () => 0, target: 1 }, // weekly_task_6: expert 0 errors (boolean)
+  {
+    // weekly_task_7: 3 different difficulties
+    current: () => {
+      try {
+        const raw = localStorage.getItem("sudokuverse_weekly_difficulties_v2");
+        if (raw) {
+          const p = JSON.parse(raw) as { weekKey: string; diffs: string[] };
+          const d = new Date();
+          const jan4 = new Date(d.getFullYear(), 0, 4);
+          const week = Math.ceil(
+            ((d.getTime() - jan4.getTime()) / 86400000 + jan4.getDay() + 1) / 7,
+          );
+          const wk = `${d.getFullYear()}-W${week.toString().padStart(2, "0")}`;
+          if (p.weekKey === wk) return p.diffs.length;
+        }
+      } catch (_) {}
+      return 0;
+    },
+    target: 3,
+  },
+];
+
 function getTaskLabel(
   taskType: ExtendedTaskType,
   t: ReturnType<typeof useTranslation>,
@@ -353,6 +421,10 @@ function WeeklyChallengePanel({
       >
         {WEEKLY_CHALLENGES.map((taskKey, index) => {
           const isDone = (weeklyCompleted[index] ?? false) || badgeAwarded;
+          const prog = WEEKLY_CHALLENGE_PROGRESS[index];
+          const currentVal = isDone ? prog.target : prog.current();
+          const showProgress = prog.target > 1 && !isDone;
+          const progressPct = Math.min(1, currentVal / prog.target);
           return (
             <motion.div
               key={taskKey}
@@ -360,7 +432,7 @@ function WeeklyChallengePanel({
               initial={{ opacity: 0, x: -12 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 0.06 * index + 0.3 }}
-              className="flex items-center gap-2.5 rounded-xl px-2.5 py-2"
+              className="flex flex-col gap-1 rounded-xl px-2.5 py-2"
               style={{
                 background: isDone
                   ? "oklch(var(--game-cell-hint) / 0.4)"
@@ -370,45 +442,89 @@ function WeeklyChallengePanel({
                   : "1px solid transparent",
               }}
             >
-              {/* Checkbox indicator */}
-              <motion.div
-                className="w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0"
-                style={{
-                  background: isDone
-                    ? "oklch(var(--game-cell-hint))"
-                    : "oklch(var(--border))",
-                  border: isDone
-                    ? "none"
-                    : "1.5px solid oklch(var(--muted-foreground) / 0.4)",
-                }}
-                animate={isDone ? { scale: [1, 1.2, 1] } : {}}
-                transition={{ duration: 0.3 }}
-              >
-                {isDone && (
-                  <motion.span
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    className="text-xs leading-none"
+              <div className="flex items-center gap-2.5">
+                {/* Checkbox indicator */}
+                <motion.div
+                  className="w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0"
+                  style={{
+                    background: isDone
+                      ? "oklch(var(--game-cell-hint))"
+                      : "oklch(var(--border))",
+                    border: isDone
+                      ? "none"
+                      : "1.5px solid oklch(var(--muted-foreground) / 0.4)",
+                  }}
+                  animate={isDone ? { scale: [1, 1.2, 1] } : {}}
+                  transition={{ duration: 0.3 }}
+                >
+                  {isDone && (
+                    <motion.span
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      className="text-xs leading-none"
+                    >
+                      ✓
+                    </motion.span>
+                  )}
+                </motion.div>
+
+                <span className="text-base leading-none flex-shrink-0">
+                  {WEEKLY_CHALLENGE_EMOJIS[index]}
+                </span>
+
+                <span
+                  className="flex-1 text-xs font-medium leading-tight"
+                  style={{
+                    color: "oklch(var(--card-foreground))",
+                    textDecoration: isDone ? "line-through" : "none",
+                    opacity: isDone ? 0.65 : 1,
+                  }}
+                >
+                  {t(taskKey)}
+                </span>
+
+                {/* Numeric progress badge for countable tasks */}
+                {showProgress && (
+                  <span
+                    className="text-xs font-bold px-1.5 py-0.5 rounded-full flex-shrink-0"
+                    style={{
+                      background:
+                        currentVal > 0
+                          ? "oklch(var(--accent) / 0.2)"
+                          : "oklch(var(--secondary))",
+                      color:
+                        currentVal > 0
+                          ? "oklch(var(--primary))"
+                          : "oklch(var(--muted-foreground))",
+                    }}
                   >
-                    ✓
-                  </motion.span>
+                    {currentVal}/{prog.target}
+                  </span>
                 )}
-              </motion.div>
+              </div>
 
-              <span className="text-base leading-none flex-shrink-0">
-                {WEEKLY_CHALLENGE_EMOJIS[index]}
-              </span>
-
-              <span
-                className="flex-1 text-xs font-medium leading-tight"
-                style={{
-                  color: "oklch(var(--card-foreground))",
-                  textDecoration: isDone ? "line-through" : "none",
-                  opacity: isDone ? 0.65 : 1,
-                }}
-              >
-                {t(taskKey)}
-              </span>
+              {/* Mini progress bar for countable tasks */}
+              {showProgress && currentVal > 0 && (
+                <div
+                  className="h-1 rounded-full overflow-hidden ml-7"
+                  style={{ background: "oklch(var(--border))" }}
+                >
+                  <motion.div
+                    className="h-full rounded-full"
+                    initial={{ width: 0 }}
+                    animate={{ width: `${progressPct * 100}%` }}
+                    transition={{
+                      duration: 0.6,
+                      ease: "easeOut",
+                      delay: 0.1 * index + 0.5,
+                    }}
+                    style={{
+                      background:
+                        "linear-gradient(90deg, oklch(var(--accent)), oklch(var(--primary)))",
+                    }}
+                  />
+                </div>
+              )}
             </motion.div>
           );
         })}
@@ -536,19 +652,27 @@ export function HomeScreen({
             className="flex flex-col items-end gap-1"
           >
             <div className="flex items-center gap-1.5">
-              {/* Streak pill */}
-              {streak > 0 && (
-                <div
-                  className="rounded-full px-2 py-0.5 text-xs font-bold"
-                  style={{
-                    background: "oklch(0.72 0.19 52 / 0.15)",
-                    color: "oklch(0.65 0.2 52)",
-                    border: "1.5px solid oklch(0.72 0.19 52 / 0.4)",
-                  }}
-                >
-                  🔥 {streak}
-                </div>
-              )}
+              {/* Streak pill - always show */}
+              <div
+                className="rounded-full px-2 py-0.5 text-xs font-bold"
+                style={{
+                  background:
+                    streak >= 3
+                      ? "oklch(0.72 0.19 52 / 0.18)"
+                      : "oklch(var(--secondary))",
+                  color:
+                    streak >= 3
+                      ? "oklch(0.6 0.2 52)"
+                      : "oklch(var(--muted-foreground))",
+                  border:
+                    streak >= 3
+                      ? "1.5px solid oklch(0.72 0.19 52 / 0.4)"
+                      : "1.5px solid oklch(var(--border))",
+                }}
+              >
+                {streak >= 3 ? "🔥" : "📅"} {streak}
+                {lang === "tr" ? " gün" : "d"}
+              </div>
               {/* Level badge */}
               <div
                 className="rounded-full px-2 py-0.5 text-xs font-bold"

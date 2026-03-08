@@ -185,6 +185,10 @@ function addWeeklyDifficulty(diff: string): string[] {
 export function useDailyTasks() {
   const [dailyData, setDailyData] = useState<DailyStorage>(loadDaily);
   const [weeklyData, setWeeklyData] = useState<WeeklyStorage>(loadWeekly);
+  // Tracks tasks newly completed in this session (for toast notifications)
+  const [newlyCompletedTasks, setNewlyCompletedTasks] = useState<
+    FrontendTaskType[]
+  >([]);
 
   // Re-check on focus (new day detection)
   useEffect(() => {
@@ -211,6 +215,9 @@ export function useDailyTasks() {
         tasks: { ...prev.tasks, [taskType]: true },
       };
       saveDaily(next);
+
+      // Notify that this task was newly completed
+      setNewlyCompletedTasks((prevNew) => [...prevNew, taskType]);
 
       // Check if all 10 tasks are now done → mark weekly_task_3
       const allTaskTypes: FrontendTaskType[] = [
@@ -329,9 +336,16 @@ export function useDailyTasks() {
     [markTaskComplete, markWeeklyTaskComplete],
   );
 
+  // Clear newly completed tasks (call after showing toast)
+  const clearNewlyCompleted = useCallback(() => {
+    setNewlyCompletedTasks([]);
+  }, []);
+
   return {
     completedTasks: dailyData.tasks,
     weeklyChallengeCompleted: weeklyData.completed,
+    newlyCompletedTasks,
+    clearNewlyCompleted,
     markTaskComplete,
     markWeeklyTaskComplete,
     onPuzzleSolved,

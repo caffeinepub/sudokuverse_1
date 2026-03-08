@@ -222,12 +222,43 @@ export function GameScreen({
   const t = useTranslation(lang);
   const recordSolve = useRecordPuzzleSolve();
   const { playSound } = useSound();
-  const { onPuzzleSolved } = useDailyTasks();
+  const { onPuzzleSolved, newlyCompletedTasks, clearNewlyCompleted } =
+    useDailyTasks();
   const { recordModeResult } = useModeStats();
   const { advanceLevel } = useLevelSystem();
 
   // Track if note mode was used this game
   const noteModeUsedRef = useRef(false);
+
+  // Toast notifications for newly completed daily tasks
+  useEffect(() => {
+    if (newlyCompletedTasks.length === 0) return;
+    const TASK_LABELS: Record<string, { tr: string; en: string }> = {
+      solve_two_puzzles: { tr: "2 bulmaca çözüldü", en: "Solved 2 puzzles" },
+      solve_no_hints: { tr: "İpuçsuz çözüm", en: "Solved without hints" },
+      solve_under_time: { tr: "Hızlı çözüm", en: "Speed solve" },
+      solve_three_puzzles: { tr: "3 bulmaca çözüldü", en: "Solved 3 puzzles" },
+      solve_hard_puzzle: { tr: "Zor bulmaca çözüldü", en: "Hard puzzle done" },
+      no_errors_puzzle: { tr: "Hatasız çözüm", en: "Error-free solve" },
+      speed_solve: { tr: "5 dk'da çözüm", en: "Solved in 5 min" },
+      use_notes_mode: { tr: "Not modu kullanıldı", en: "Notes mode used" },
+      solve_medium_plus: { tr: "Orta+ bulmaca", en: "Medium+ puzzle done" },
+      chain_two: { tr: "2 zincir tamamlandı", en: "Chain x2 done" },
+    };
+    newlyCompletedTasks.forEach((taskType, i) => {
+      const label = TASK_LABELS[taskType];
+      if (!label) return;
+      setTimeout(() => {
+        toast.success(
+          lang === "tr"
+            ? `✅ Görev Tamamlandı: ${label.tr}!`
+            : `✅ Task Complete: ${label.en}!`,
+          { duration: 3000 },
+        );
+      }, i * 600);
+    });
+    clearNewlyCompleted();
+  }, [newlyCompletedTasks, clearNewlyCompleted, lang]);
 
   const [puzzle, setPuzzle] = useState<Grid>([]);
   const [solution, setSolution] = useState<Grid>([]);
@@ -279,6 +310,9 @@ export function GameScreen({
   const [bossShake, setBossShake] = useState(false);
   const [showBossDefeated, setShowBossDefeated] = useState(false);
   const [bossHitFlash, setBossHitFlash] = useState(false);
+
+  // --- Blind Mode completion ---
+  const [showBlindComplete, setShowBlindComplete] = useState(false);
 
   // --- Daily Tournament ---
   const [tournamentScore, setTournamentScore] = useState(0);
@@ -506,13 +540,11 @@ export function GameScreen({
         }, 100);
       } else {
         playSound("puzzle_complete");
-        // Confetti for normal completion
-        if (gameMode !== "star_collector") {
-          setTimeout(() => {
-            setShowConfetti(true);
-            setTimeout(() => setShowConfetti(false), 3000);
-          }, 200);
-        }
+        // Confetti for all modes including chain and star_collector
+        setTimeout(() => {
+          setShowConfetti(true);
+          setTimeout(() => setShowConfetti(false), 3000);
+        }, 200);
       }
 
       // Play XP gain sound after a small delay
@@ -566,10 +598,34 @@ export function GameScreen({
         {
           onSuccess: (data) => {
             if (data.badgeUnlocked) {
-              // badgeUnlocked is boolean in our backend, but we show a generic badge toast
-              // Try to infer badge from context, default to generic
-              const badgeId = "first_solve"; // backend returns boolean, not ID
-              const info = BADGE_INFO[badgeId];
+              // Infer which badge was likely unlocked based on game context
+              let inferredBadgeId = "first_solve";
+              const solvedCount = Number(
+                (data as { puzzlesSolved?: bigint }).puzzlesSolved ?? 0,
+              );
+              if (gameMode === "boss_battle") {
+                inferredBadgeId = "boss_slayer";
+              } else if (gameMode === "survival" && errorCount === 0) {
+                inferredBadgeId = "survival_master";
+              } else if (gameMode === "chain" && chainCount >= 5) {
+                inferredBadgeId = "chain_5";
+              } else if (gameMode === "star_collector") {
+                inferredBadgeId = "star_perfect";
+              } else if (gameMode === "speed_rush" && isComplete) {
+                inferredBadgeId = "speed_rush_champion";
+              } else if (hintsUsed === 0 && errorCount === 0) {
+                inferredBadgeId = "perfect_solve";
+              } else if (hintsUsed === 0 && solvedCount >= 10) {
+                inferredBadgeId = "hint_free_10";
+              } else if (effectiveDifficulty === "master") {
+                inferredBadgeId = "master_difficulty";
+              } else if (solvedCount >= 100) {
+                inferredBadgeId = "century";
+              } else if (solvedCount === 1) {
+                inferredBadgeId = "first_solve";
+              }
+              const info =
+                BADGE_INFO[inferredBadgeId] ?? BADGE_INFO.first_solve;
               const badgeEmoji = info?.emoji ?? "🏅";
               const badgeName =
                 info?.name[lang as "tr" | "en"] ??
@@ -594,7 +650,11 @@ export function GameScreen({
         gameMode !== "star_collector" &&
         gameMode !== "boss_battle"
       ) {
-        setTimeout(() => setShowComplete(true), 400);
+        if (gameMode === "blind") {
+          setTimeout(() => setShowBlindComplete(true), 400);
+        } else {
+          setTimeout(() => setShowComplete(true), 400);
+        }
       }
     },
     [
@@ -607,6 +667,7 @@ export function GameScreen({
       combo,
       chainCount,
       lives,
+      isComplete,
       recordSolve,
       playSound,
       onPuzzleSolved,
@@ -639,13 +700,15 @@ export function GameScreen({
   const handleCellChange = useCallback(
     (row: number, col: number, value: number, isNote = false) => {
       if (isNote) {
-        // Save history for note changes too
+        // Save history for note changes too (deep copy notes for correct undo)
+        const notesCopy = new Map<string, Set<number>>();
+        notes.forEach((v, k) => notesCopy.set(k, new Set(v)));
         setMoveHistory((prev) => {
           const entry: MoveHistoryEntry = {
             row,
             col,
             prevValue: puzzle[row]?.[col] ?? 0,
-            prevNotes: new Map(notes),
+            prevNotes: notesCopy,
             prevErrors: new Set(errorCells),
           };
           return [...prev.slice(-29), entry];
@@ -669,13 +732,15 @@ export function GameScreen({
         return;
       }
 
-      // Save to history before applying
+      // Save to history before applying (deep copy notes for correct undo)
+      const notesCopy2 = new Map<string, Set<number>>();
+      notes.forEach((v, k) => notesCopy2.set(k, new Set(v)));
       setMoveHistory((prev) => {
         const entry: MoveHistoryEntry = {
           row,
           col,
           prevValue: puzzle[row]?.[col] ?? 0,
-          prevNotes: new Map(notes),
+          prevNotes: notesCopy2,
           prevErrors: new Set(errorCells),
         };
         return [...prev.slice(-29), entry];
@@ -996,18 +1061,34 @@ export function GameScreen({
             {t("tournamentScore")}
           </div>
         </div>
-        <button
-          type="button"
-          data-ocid="game.back.button"
-          onClick={onBack}
-          className="rounded-2xl px-8 py-3 font-bold text-white"
-          style={{
-            background:
-              "linear-gradient(135deg, oklch(0.52 0.24 292), oklch(0.62 0.23 340))",
-          }}
-        >
-          {t("back")}
-        </button>
+        <div className="flex flex-col gap-3 w-full max-w-xs">
+          {onPlayAgain && (
+            <button
+              type="button"
+              data-ocid="game.tournament.play_again_button"
+              onClick={onPlayAgain}
+              className="rounded-2xl px-8 py-3 font-bold text-white"
+              style={{
+                background:
+                  "linear-gradient(135deg, oklch(0.55 0.2 145), oklch(0.62 0.2 162))",
+              }}
+            >
+              {lang === "tr" ? "🎮 Başka Mod Oyna" : "🎮 Play Another Mode"}
+            </button>
+          )}
+          <button
+            type="button"
+            data-ocid="game.back.button"
+            onClick={onBack}
+            className="rounded-2xl px-8 py-3 font-bold text-white"
+            style={{
+              background:
+                "linear-gradient(135deg, oklch(0.52 0.24 292), oklch(0.62 0.23 340))",
+            }}
+          >
+            {t("back")}
+          </button>
+        </div>
       </div>
     );
   }
@@ -1382,22 +1463,46 @@ export function GameScreen({
         style={{ minHeight: 0 }}
       >
         {isPaused ? (
-          <div className="text-center">
-            <div className="text-6xl mb-4">⏸</div>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="flex flex-col items-center justify-center w-full h-full"
+            style={{
+              background: "oklch(var(--card) / 0.92)",
+              backdropFilter: "blur(20px)",
+              WebkitBackdropFilter: "blur(20px)",
+              borderRadius: "24px",
+              padding: "2rem",
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: [0, 1.2, 1] }}
+              transition={{ duration: 0.4, type: "spring" }}
+              className="text-7xl mb-5"
+            >
+              ⏸
+            </motion.div>
             <h2
-              className="text-2xl font-bold font-display mb-4"
+              className="text-2xl font-bold font-display mb-2"
               style={{ color: "oklch(var(--foreground))" }}
             >
               {t("pause")}
             </h2>
+            <p
+              className="text-sm mb-8"
+              style={{ color: "oklch(var(--muted-foreground))" }}
+            >
+              {lang === "tr" ? "Bulmaca gizlendi" : "Puzzle is hidden"}
+            </p>
             <button
               type="button"
               onClick={() => setIsPaused(false)}
-              className="gradient-bg-purple-pink text-white font-bold px-8 py-3 rounded-2xl text-lg"
+              className="gradient-bg-purple-pink text-white font-bold px-10 py-3 rounded-2xl text-lg transition-all hover:scale-105 active:scale-95"
             >
               {t("resume")}
             </button>
-          </div>
+          </motion.div>
         ) : (
           <SudokuBoard
             puzzle={puzzle}
@@ -1425,6 +1530,7 @@ export function GameScreen({
             type="button"
             data-ocid="game.note_toggle"
             onClick={() => {
+              playSound("button_click");
               setIsNoteMode((n) => {
                 if (!n) noteModeUsedRef.current = true;
                 return !n;
@@ -1473,7 +1579,10 @@ export function GameScreen({
           <button
             type="button"
             data-ocid="game.undo_button"
-            onClick={handleUndo}
+            onClick={() => {
+              playSound("button_click");
+              handleUndo();
+            }}
             disabled={moveHistory.length === 0}
             className="flex flex-col items-center gap-0.5 rounded-2xl px-3 py-2 transition-all hover:scale-105 disabled:opacity-40 disabled:cursor-not-allowed"
             style={{
@@ -1490,7 +1599,10 @@ export function GameScreen({
           <button
             type="button"
             data-ocid="game.autonotes_button"
-            onClick={handleAutoNotes}
+            onClick={() => {
+              playSound("button_click");
+              handleAutoNotes();
+            }}
             className="flex flex-col items-center gap-0.5 rounded-2xl px-3 py-2 transition-all hover:scale-105"
             style={{
               background: "oklch(var(--secondary))",
@@ -2011,23 +2123,78 @@ export function GameScreen({
                   </motion.span>
                 ))}
               </div>
-              <div className="text-white/70 text-sm mb-2">
-                {lang === "tr"
-                  ? `Toplam: ${getStarTotal()} yıldız`
-                  : `Total: ${getStarTotal()} stars`}
+              {/* Stats grid */}
+              <div className="grid grid-cols-2 gap-2 mb-4 w-full">
+                <div
+                  className="rounded-xl p-2.5 text-left"
+                  style={{ background: "oklch(1 0 0 / 0.1)" }}
+                >
+                  <div className="text-white/50 text-xs mb-0.5">
+                    {t("timeLabel")}
+                  </div>
+                  <div className="text-white font-bold text-base">
+                    ⏱ {formatTime(timer)}
+                  </div>
+                </div>
+                <div
+                  className="rounded-xl p-2.5 text-left"
+                  style={{ background: "oklch(1 0 0 / 0.1)" }}
+                >
+                  <div className="text-white/50 text-xs mb-0.5">
+                    {t("xpEarned")}
+                  </div>
+                  <div className="text-white font-bold text-base">
+                    ⭐ +{earnedXP}
+                  </div>
+                </div>
+                <div
+                  className="rounded-xl p-2.5 text-left"
+                  style={{ background: "oklch(1 0 0 / 0.1)" }}
+                >
+                  <div className="text-white/50 text-xs mb-0.5">
+                    {t("hintsUsed")}
+                  </div>
+                  <div className="text-white font-bold text-base">
+                    💡 {hintsUsed}
+                  </div>
+                </div>
+                <div
+                  className="rounded-xl p-2.5 text-left"
+                  style={{ background: "oklch(1 0 0 / 0.1)" }}
+                >
+                  <div className="text-white/50 text-xs mb-0.5">
+                    {lang === "tr" ? "Toplam Yıldız" : "Total Stars"}
+                  </div>
+                  <div className="text-white font-bold text-base">
+                    ⭐ {getStarTotal()}
+                  </div>
+                </div>
               </div>
-              <div className="text-white/60 text-xs mb-6">
-                {formatTime(timer)}
+              <div className="flex gap-2 w-full">
+                {onPlayAgain && (
+                  <button
+                    type="button"
+                    data-ocid="game.stars.play_again_button"
+                    onClick={onPlayAgain}
+                    className="flex-1 font-bold py-3 rounded-2xl text-sm"
+                    style={{
+                      background: "oklch(0.55 0.2 145)",
+                      color: "white",
+                    }}
+                  >
+                    {t("playAgain")} ⭐
+                  </button>
+                )}
+                <button
+                  type="button"
+                  data-ocid="game.stars.confirm_button"
+                  onClick={onBack}
+                  className="flex-1 bg-white font-bold py-3 rounded-2xl text-sm"
+                  style={{ color: "oklch(0.42 0.2 300)" }}
+                >
+                  {t("backToHome")}
+                </button>
               </div>
-              <button
-                type="button"
-                data-ocid="game.stars.confirm_button"
-                onClick={onBack}
-                className="w-full bg-white font-bold py-4 rounded-2xl text-lg"
-                style={{ color: "oklch(0.42 0.2 300)" }}
-              >
-                {t("backToHome")}
-              </button>
             </motion.div>
           </motion.div>
         )}
@@ -2251,6 +2418,174 @@ export function GameScreen({
               >
                 {lang === "tr" ? "Harika! 🎉" : "Awesome! 🎉"}
               </motion.button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Blind Mode Completion Modal */}
+      <AnimatePresence>
+        {showBlindComplete && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{
+              background: "oklch(0 0 0 / 0.75)",
+              backdropFilter: "blur(8px)",
+            }}
+          >
+            <motion.div
+              data-ocid="game.blind.complete.modal"
+              initial={{ scale: 0.7, y: 30 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.8, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 220, damping: 18 }}
+              className="w-full max-w-sm rounded-3xl p-8 text-center shadow-2xl overflow-hidden relative"
+              style={{
+                background:
+                  "linear-gradient(135deg, oklch(0.14 0.06 275), oklch(0.28 0.12 290))",
+              }}
+            >
+              {/* Particle burst */}
+              <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                {RANKUP_PARTICLES.map((p, i) => (
+                  <motion.div
+                    key={p.id}
+                    className="absolute rounded-full"
+                    style={{
+                      top: "50%",
+                      left: "50%",
+                      width: 6,
+                      height: 6,
+                      background: p.color,
+                    }}
+                    initial={{ x: 0, y: 0, opacity: 1, scale: 1 }}
+                    animate={{
+                      x: p.dx * 2.5,
+                      y: p.dy * 2.5,
+                      opacity: 0,
+                      scale: 0,
+                    }}
+                    transition={{ duration: 1.2, delay: i * 0.04 }}
+                  />
+                ))}
+              </div>
+
+              <motion.div
+                initial={{ scale: 0, rotate: -20 }}
+                animate={{ scale: [0, 1.3, 1], rotate: 0 }}
+                transition={{ delay: 0.1, type: "spring", stiffness: 280 }}
+                className="text-6xl mb-3 relative"
+              >
+                👁️
+              </motion.div>
+
+              <motion.h2
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.25 }}
+                className="text-2xl font-black font-display text-white mb-1 relative"
+              >
+                {lang === "tr" ? "Hafızan Çok Güçlü!" : "Memory Master!"}
+              </motion.h2>
+
+              <motion.p
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.4 }}
+                className="text-white/70 text-sm mb-5 relative"
+              >
+                {lang === "tr"
+                  ? "Kör modunda bulmacayı çözdün!"
+                  : "You solved the puzzle in blind mode!"}
+              </motion.p>
+
+              {/* Stats */}
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.45 }}
+                className="grid grid-cols-2 gap-2 mb-6 relative"
+              >
+                <div
+                  className="rounded-xl p-2.5 text-left"
+                  style={{ background: "oklch(1 0 0 / 0.1)" }}
+                >
+                  <div className="text-white/50 text-xs mb-0.5">
+                    {t("timeLabel")}
+                  </div>
+                  <div className="text-white font-bold text-base">
+                    ⏱ {formatTime(timer)}
+                  </div>
+                </div>
+                <div
+                  className="rounded-xl p-2.5 text-left"
+                  style={{ background: "oklch(1 0 0 / 0.1)" }}
+                >
+                  <div className="text-white/50 text-xs mb-0.5">
+                    {t("xpEarned")}
+                  </div>
+                  <div className="text-white font-bold text-base">
+                    ⭐ +{earnedXP}
+                  </div>
+                </div>
+                <div
+                  className="rounded-xl p-2.5 text-left"
+                  style={{ background: "oklch(1 0 0 / 0.1)" }}
+                >
+                  <div className="text-white/50 text-xs mb-0.5">
+                    {t("hintsUsed")}
+                  </div>
+                  <div className="text-white font-bold text-base">
+                    💡 {hintsUsed}
+                  </div>
+                </div>
+                <div
+                  className="rounded-xl p-2.5 text-left"
+                  style={{ background: "oklch(1 0 0 / 0.1)" }}
+                >
+                  <div className="text-white/50 text-xs mb-0.5">
+                    {t("errorsCount")}
+                  </div>
+                  <div className="text-white font-bold text-base">
+                    ❌ {errorCount}
+                  </div>
+                </div>
+              </motion.div>
+
+              <div className="flex gap-2 relative">
+                {onPlayAgain && (
+                  <motion.button
+                    type="button"
+                    data-ocid="game.blind.play_again_button"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.7 }}
+                    onClick={onPlayAgain}
+                    className="flex-1 font-bold py-3 rounded-2xl text-sm"
+                    style={{
+                      background: "oklch(0.55 0.2 145)",
+                      color: "white",
+                    }}
+                  >
+                    {t("playAgain")} 👁️
+                  </motion.button>
+                )}
+                <motion.button
+                  type="button"
+                  data-ocid="game.blind.confirm_button"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.8 }}
+                  onClick={onBack}
+                  className="flex-1 bg-white font-bold py-3 rounded-2xl text-sm"
+                  style={{ color: "oklch(0.35 0.12 280)" }}
+                >
+                  {t("backToHome")}
+                </motion.button>
+              </div>
             </motion.div>
           </motion.div>
         )}
