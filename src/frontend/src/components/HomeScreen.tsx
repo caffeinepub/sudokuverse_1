@@ -5,8 +5,28 @@ import {
   type Difficulty,
   type PlayerProfile,
 } from "../backend.d";
-import { type Lang, useTranslation } from "../i18n";
+import { useSound } from "../context/SoundContext";
+import { useTheme } from "../context/ThemeContext";
+import { useDailyTasks } from "../hooks/useDailyTasks";
+import { LANGUAGES, type Lang, useTranslation } from "../i18n";
+import { THEMES } from "../themes";
 import { XPBar, getRankInfo } from "./XPBar";
+
+const FLAG_MAP: Record<Lang, string> = {
+  tr: "🇹🇷",
+  en: "🇬🇧",
+  de: "🇩🇪",
+  fr: "🇫🇷",
+  es: "🇪🇸",
+  it: "🇮🇹",
+  pt: "🇧🇷",
+  ru: "🇷🇺",
+  ja: "🇯🇵",
+  ko: "🇰🇷",
+  zh: "🇨🇳",
+  ar: "🇸🇦",
+  hi: "🇮🇳",
+};
 
 // Extended task types that are frontend-only (not stored in backend)
 type ExtendedTaskType =
@@ -32,6 +52,8 @@ interface HomeScreenProps {
   onPlay?: (difficulty: Difficulty) => void;
   onOpenModes: () => void;
   onNavigate: (screen: "stats" | "badges" | "settings") => void;
+  onOpenThemePicker?: () => void;
+  onOpenSettings?: () => void;
 }
 
 const TASK_EMOJIS: Record<ExtendedTaskType, string> = {
@@ -47,14 +69,21 @@ const TASK_EMOJIS: Record<ExtendedTaskType, string> = {
   chain_two: "⛓️",
 };
 
-const EXTRA_TASKS: ExtendedDailyTask[] = [
-  { taskType: "solve_three_puzzles", isCompleted: false, isFrontendOnly: true },
-  { taskType: "solve_hard_puzzle", isCompleted: false, isFrontendOnly: true },
-  { taskType: "no_errors_puzzle", isCompleted: false, isFrontendOnly: true },
-  { taskType: "speed_solve", isCompleted: false, isFrontendOnly: true },
-  { taskType: "use_notes_mode", isCompleted: false, isFrontendOnly: true },
-  { taskType: "solve_medium_plus", isCompleted: false, isFrontendOnly: true },
-  { taskType: "chain_two", isCompleted: false, isFrontendOnly: true },
+const EXTRA_TASK_TYPES: Array<
+  Exclude<
+    ExtendedTaskType,
+    | DailyTaskType.solve_two_puzzles
+    | DailyTaskType.solve_no_hints
+    | DailyTaskType.solve_under_time
+  >
+> = [
+  "solve_three_puzzles",
+  "solve_hard_puzzle",
+  "no_errors_puzzle",
+  "speed_solve",
+  "use_notes_mode",
+  "solve_medium_plus",
+  "chain_two",
 ];
 
 const WEEKLY_CHALLENGES = [
@@ -91,9 +120,11 @@ function getTaskLabel(
 function DailyTasksPanel({
   playerProfile,
   lang,
+  frontendCompletedTasks,
 }: {
   playerProfile: PlayerProfile | null;
   lang: Lang;
+  frontendCompletedTasks: Partial<Record<string, boolean>>;
 }) {
   const t = useTranslation(lang);
 
@@ -105,10 +136,17 @@ function DailyTasksPanel({
     ]
   ).map((task) => ({
     taskType: task.taskType as ExtendedTaskType,
-    isCompleted: task.isCompleted,
+    // Also check frontendCompletedTasks for backend-keyed tasks (same key names)
+    isCompleted: task.isCompleted || !!frontendCompletedTasks[task.taskType],
   }));
 
-  const allTasks: ExtendedDailyTask[] = [...backendTasks, ...EXTRA_TASKS];
+  const extraTasks: ExtendedDailyTask[] = EXTRA_TASK_TYPES.map((taskType) => ({
+    taskType,
+    isCompleted: !!frontendCompletedTasks[taskType],
+    isFrontendOnly: true,
+  }));
+
+  const allTasks: ExtendedDailyTask[] = [...backendTasks, ...extraTasks];
   const completedCount = allTasks.filter((task) => task.isCompleted).length;
   const totalCount = allTasks.length;
   const allDone = completedCount === totalCount;
@@ -234,21 +272,18 @@ function DailyTasksPanel({
 function WeeklyChallengePanel({
   playerProfile,
   lang,
+  weeklyCompleted,
 }: {
   playerProfile: PlayerProfile | null;
   lang: Lang;
+  weeklyCompleted: boolean[];
 }) {
   const t = useTranslation(lang);
   const badgeAwarded = playerProfile?.weeklyChallenge?.badgeAwarded ?? false;
 
-  // For now, frontend-only state: derive how many "weekly" sub-challenges are done
-  // based on puzzlesCompleted from backend as a rough proxy (0 = nothing done)
-  const puzzlesCompleted = Number(
-    playerProfile?.weeklyChallenge?.puzzlesCompleted ?? 0,
-  );
-  // Map puzzlesCompleted to completed challenge checkboxes (0-7 scale)
-  // Each challenge requires ~1 puzzle milestone
-  const completedChallenges = Math.min(7, puzzlesCompleted);
+  const completedChallenges = badgeAwarded
+    ? 7
+    : weeklyCompleted.filter(Boolean).length;
   const totalChallenges = 7;
   const allDone = completedChallenges === totalChallenges || badgeAwarded;
 
@@ -314,7 +349,7 @@ function WeeklyChallengePanel({
         style={{ maxHeight: "220px" }}
       >
         {WEEKLY_CHALLENGES.map((taskKey, index) => {
-          const isDone = index < completedChallenges || badgeAwarded;
+          const isDone = (weeklyCompleted[index] ?? false) || badgeAwarded;
           return (
             <motion.div
               key={taskKey}
@@ -396,8 +431,15 @@ export function HomeScreen({
   isLoading,
   onOpenModes,
   onNavigate,
+  onOpenThemePicker,
+  onOpenSettings,
 }: HomeScreenProps) {
+  const { completedTasks, weeklyChallengeCompleted } = useDailyTasks();
   const t = useTranslation(lang);
+  const { theme: activeTheme } = useTheme();
+  const currentTheme = THEMES.find((th) => th.id === activeTheme);
+  const currentLang = LANGUAGES.find((l) => l.code === lang);
+  const { musicEnabled, toggleMusic } = useSound();
 
   const xp = Number(playerProfile?.xp ?? 0);
   const { rankName } = getRankInfo(xp, lang);
@@ -506,6 +548,80 @@ export function HomeScreen({
             style={{ background: "oklch(var(--secondary))" }}
           />
         )}
+
+        {/* Theme & Language inline pills */}
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15 }}
+          className="flex items-center gap-2 mt-3"
+        >
+          {/* Theme pill */}
+          <button
+            type="button"
+            data-ocid="home.theme.open_modal_button"
+            onClick={onOpenThemePicker}
+            className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition-all hover:scale-105 active:scale-95"
+            style={{
+              background: "oklch(var(--card) / 0.85)",
+              border: "1.5px solid oklch(var(--border))",
+              color: "oklch(var(--primary))",
+              boxShadow: "0 1px 6px oklch(0 0 0 / 0.1)",
+              backdropFilter: "blur(10px)",
+              WebkitBackdropFilter: "blur(10px)",
+            }}
+          >
+            <span className="text-sm leading-none">
+              {currentTheme?.emoji ?? "🎨"}
+            </span>
+            <span className="text-xs leading-none">🎨</span>
+          </button>
+
+          {/* Language pill */}
+          <button
+            type="button"
+            data-ocid="home.lang.open_modal_button"
+            onClick={onOpenSettings}
+            className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition-all hover:scale-105 active:scale-95"
+            style={{
+              background: "oklch(var(--card) / 0.85)",
+              border: "1.5px solid oklch(var(--border))",
+              color: "oklch(var(--primary))",
+              boxShadow: "0 1px 6px oklch(0 0 0 / 0.1)",
+              backdropFilter: "blur(10px)",
+              WebkitBackdropFilter: "blur(10px)",
+            }}
+          >
+            <span className="text-sm leading-none">{FLAG_MAP[lang]}</span>
+            <span className="text-xs font-bold leading-none tracking-wide">
+              {currentLang?.code.toUpperCase() ?? "EN"}
+            </span>
+          </button>
+
+          {/* Music toggle pill */}
+          <button
+            type="button"
+            data-ocid="home.music_toggle"
+            onClick={toggleMusic}
+            className="flex items-center gap-1 rounded-full px-2.5 py-1.5 text-xs font-bold transition-all hover:scale-105 active:scale-95"
+            style={{
+              background: musicEnabled
+                ? "oklch(var(--primary) / 0.15)"
+                : "oklch(var(--card) / 0.85)",
+              border: `1.5px solid ${musicEnabled ? "oklch(var(--primary))" : "oklch(var(--border))"}`,
+              color: musicEnabled
+                ? "oklch(var(--primary))"
+                : "oklch(var(--muted-foreground))",
+              boxShadow: "0 1px 6px oklch(0 0 0 / 0.1)",
+              backdropFilter: "blur(10px)",
+              WebkitBackdropFilter: "blur(10px)",
+            }}
+          >
+            <span className="text-sm leading-none">
+              {musicEnabled ? "🎵" : "🔇"}
+            </span>
+          </button>
+        </motion.div>
       </header>
 
       {/* Main content */}
@@ -554,10 +670,18 @@ export function HomeScreen({
         </motion.div>
 
         {/* Daily Tasks */}
-        <DailyTasksPanel playerProfile={playerProfile} lang={lang} />
+        <DailyTasksPanel
+          playerProfile={playerProfile}
+          lang={lang}
+          frontendCompletedTasks={completedTasks}
+        />
 
         {/* Weekly Challenge */}
-        <WeeklyChallengePanel playerProfile={playerProfile} lang={lang} />
+        <WeeklyChallengePanel
+          playerProfile={playerProfile}
+          lang={lang}
+          weeklyCompleted={weeklyChallengeCompleted}
+        />
       </main>
 
       {/* Bottom nav */}

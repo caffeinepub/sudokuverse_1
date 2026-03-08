@@ -1,6 +1,10 @@
 import { AnimatePresence, motion } from "motion/react";
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { toast } from "sonner";
 import { Difficulty } from "../backend.d";
+import { useSound } from "../context/SoundContext";
+import { useDailyTasks } from "../hooks/useDailyTasks";
+import { useModeStats } from "../hooks/useModeStats";
 import { useRecordPuzzleSolve } from "../hooks/usePlayerData";
 import { type Lang, useTranslation } from "../i18n";
 import {
@@ -13,11 +17,55 @@ import {
 import type { GameMode } from "../types/gameMode";
 import { SudokuBoard } from "./SudokuBoard";
 
+// Badge display info
+const BADGE_INFO: Record<
+  string,
+  { emoji: string; name: { tr: string; en: string } }
+> = {
+  first_solve: { emoji: "🌟", name: { tr: "İlk Çözüm", en: "First Solve" } },
+  hint_free_10: {
+    emoji: "🧠",
+    name: { tr: "İpuçsuz Kahraman", en: "Hint-Free Hero" },
+  },
+  rank_5: { emoji: "🎖", name: { tr: "Stratejist", en: "Strategist" } },
+  perfect_solve: { emoji: "💎", name: { tr: "Mükemmel", en: "Perfect" } },
+  speed_demon: { emoji: "⚡", name: { tr: "Hız Şeytanı", en: "Speed Demon" } },
+  weekly_champion: {
+    emoji: "🏆",
+    name: { tr: "Haftalık Şampiyon", en: "Weekly Champion" },
+  },
+  century: { emoji: "💯", name: { tr: "Yüzüncü", en: "Century" } },
+  master_difficulty: { emoji: "🧩", name: { tr: "Usta", en: "Master" } },
+  daily_streak: {
+    emoji: "🔥",
+    name: { tr: "Günlük Streak", en: "Daily Streak" },
+  },
+  error_free_hard: {
+    emoji: "🎯",
+    name: { tr: "Hatasız Zor", en: "Error-Free Hard" },
+  },
+  speed_rush_champion: {
+    emoji: "⚡",
+    name: { tr: "Hız Şampiyonu", en: "Speed Champion" },
+  },
+  survival_master: {
+    emoji: "❤️",
+    name: { tr: "Hayatta Kalanlar", en: "Survival Master" },
+  },
+  chain_5: { emoji: "⛓️", name: { tr: "Zincir Ustası", en: "Chain Master" } },
+  boss_slayer: { emoji: "🐉", name: { tr: "Boss Katili", en: "Boss Slayer" } },
+  star_perfect: {
+    emoji: "⭐",
+    name: { tr: "Yıldız Toplayıcı", en: "Star Collector" },
+  },
+};
+
 interface GameScreenProps {
   difficulty: Difficulty;
   gameMode: GameMode;
   lang: Lang;
   onBack: () => void;
+  onPlayAgain?: () => void;
 }
 
 function formatTime(seconds: number): string {
@@ -126,9 +174,16 @@ export function GameScreen({
   gameMode,
   lang,
   onBack,
+  onPlayAgain,
 }: GameScreenProps) {
   const t = useTranslation(lang);
   const recordSolve = useRecordPuzzleSolve();
+  const { playSound } = useSound();
+  const { onPuzzleSolved } = useDailyTasks();
+  const { recordModeResult } = useModeStats();
+
+  // Track if note mode was used this game
+  const noteModeUsedRef = useRef(false);
 
   const [puzzle, setPuzzle] = useState<Grid>([]);
   const [solution, setSolution] = useState<Grid>([]);
@@ -186,6 +241,14 @@ export function GameScreen({
   const [alreadyPlayed, setAlreadyPlayed] = useState(false);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const recordModeResultRef = useRef(recordModeResult);
+  useEffect(() => {
+    recordModeResultRef.current = recordModeResult;
+  });
+  const comboRef = useRef(combo);
+  useEffect(() => {
+    comboRef.current = combo;
+  });
 
   const effectiveDifficulty =
     gameMode === "boss_battle"
@@ -271,6 +334,12 @@ export function GameScreen({
       setSpeedTimeLeft((prev) => {
         if (prev <= 1) {
           clearInterval(id);
+          // Record speed_rush as played (not won since timer ran out)
+          recordModeResultRef.current({
+            gameMode: "speed_rush",
+            won: false,
+            combo: comboRef.current,
+          });
           setShowTimeUp(true);
           return 0;
         }
@@ -328,19 +397,49 @@ export function GameScreen({
         setTournamentScore(score);
         saveTournamentScore(score);
       }
+
+      let starsForThisGame = 0;
       if (gameMode === "star_collector") {
         let stars = 1;
         if (errorCount < 3) stars = 2;
         if (errorCount === 0 && elapsed < 300) stars = 3;
+        starsForThisGame = stars;
         setStarsEarned(stars);
         addStars(stars);
         setTimeout(() => setShowStars(true), 300);
       }
       if (gameMode === "boss_battle") {
+        playSound("boss_defeated");
         setTimeout(() => setShowBossDefeated(true), 400);
+      } else {
+        playSound("puzzle_complete");
       }
 
+      // Play XP gain sound after a small delay
+      setTimeout(() => playSound("xp_gain"), 700);
+
       setEarnedXP(xp);
+
+      // Track daily tasks & weekly challenges
+      onPuzzleSolved({
+        difficulty: effectiveDifficulty,
+        solveTimeSeconds: elapsed,
+        hintsUsed,
+        errors: errorCount,
+        isNotesModeUsed: noteModeUsedRef.current,
+        chainCount,
+        gameMode,
+      });
+
+      // Track mode stats
+      recordModeResult({
+        gameMode,
+        won: true,
+        combo,
+        livesRemaining: lives,
+        chainCount,
+        starsEarned: starsForThisGame,
+      });
 
       recordSolve.mutate(
         {
@@ -351,7 +450,26 @@ export function GameScreen({
         },
         {
           onSuccess: (data) => {
-            if (data.badgeUnlocked) setNewBadges(["🏅"]);
+            if (data.badgeUnlocked) {
+              // badgeUnlocked is boolean in our backend, but we show a generic badge toast
+              // Try to infer badge from context, default to generic
+              const badgeId = "first_solve"; // backend returns boolean, not ID
+              const info = BADGE_INFO[badgeId];
+              const badgeEmoji = info?.emoji ?? "🏅";
+              const badgeName =
+                info?.name[lang as "tr" | "en"] ??
+                (lang === "tr" ? "Yeni Rozet" : "New Badge");
+              setNewBadges([`${badgeEmoji} ${badgeName}`]);
+              setTimeout(() => playSound("badge_unlock"), 900);
+              setTimeout(() => {
+                toast.success(
+                  lang === "tr"
+                    ? `${badgeEmoji} Rozet Açıldı: ${badgeName}!`
+                    : `${badgeEmoji} Badge Unlocked: ${badgeName}!`,
+                  { duration: 4000 },
+                );
+              }, 1000);
+            }
           },
         },
       );
@@ -373,7 +491,12 @@ export function GameScreen({
       errorCount,
       combo,
       chainCount,
+      lives,
       recordSolve,
+      playSound,
+      onPuzzleSolved,
+      recordModeResult,
+      lang,
     ],
   );
 
@@ -419,6 +542,9 @@ export function GameScreen({
         return;
       }
 
+      // Play number_enter on every digit entry
+      playSound("number_enter");
+
       const newPuzzle = puzzle.map((r) => [...r]);
       newPuzzle[row][col] = value;
       setPuzzle(newPuzzle);
@@ -440,6 +566,7 @@ export function GameScreen({
 
       const cellKey = `${row}-${col}`;
       if (solution[row][col] !== value) {
+        playSound("error");
         setErrorCells((prev) => new Set(prev).add(cellKey));
         setErrorCount((c) => c + 1);
 
@@ -452,7 +579,15 @@ export function GameScreen({
             const next = l - 1;
             setShakeHeart(true);
             setTimeout(() => setShakeHeart(false), 500);
-            if (next <= 0) setTimeout(() => setShowGameOver(true), 300);
+            if (next <= 0) {
+              playSound("game_over");
+              recordModeResultRef.current({
+                gameMode: "survival",
+                won: false,
+                livesRemaining: 0,
+              });
+              setTimeout(() => setShowGameOver(true), 300);
+            }
             return next;
           });
         }
@@ -461,6 +596,7 @@ export function GameScreen({
           setTimeout(() => setBossShake(false), 400);
         }
       } else {
+        playSound("correct");
         setErrorCells((prev) => {
           const next = new Set(prev);
           next.delete(cellKey);
@@ -469,9 +605,14 @@ export function GameScreen({
 
         // Mode-specific correct handling
         if (gameMode === "speed_rush") {
-          setCombo((c) => c + 1);
+          setCombo((c) => {
+            const next = c + 1;
+            if (next > c) playSound("combo_hit");
+            return next;
+          });
         }
         if (gameMode === "boss_battle") {
+          playSound("boss_hit");
           setBossHp((hp) => {
             const next = Math.max(0, hp - 100);
             setBossHitFlash(true);
@@ -485,7 +626,7 @@ export function GameScreen({
         handleComplete(newPuzzle);
       }
     },
-    [puzzle, solution, gameMode, handleComplete],
+    [puzzle, solution, gameMode, handleComplete, playSound],
   );
 
   const handleHint = useCallback(() => {
@@ -501,6 +642,8 @@ export function GameScreen({
     }
 
     if (emptyCells.length === 0) return;
+
+    playSound("hint_use");
 
     const [r, c] = emptyCells[Math.floor(Math.random() * emptyCells.length)];
     const newPuzzle = puzzle.map((row) => [...row]);
@@ -525,7 +668,7 @@ export function GameScreen({
     if (isPuzzleComplete(newPuzzle) && checkSolution(newPuzzle, solution)) {
       handleComplete(newPuzzle);
     }
-  }, [hintsLeft, puzzle, solution, originalPuzzle, handleComplete]);
+  }, [hintsLeft, puzzle, solution, originalPuzzle, handleComplete, playSound]);
 
   const difficultyColors: Record<Difficulty, string> = {
     [Difficulty.easy]: "oklch(0.68 0.2 145)",
@@ -689,9 +832,11 @@ export function GameScreen({
         <button
           type="button"
           data-ocid="game.back.button"
-          onClick={
-            gameMode === "chain" ? () => setShowChainSummary(true) : onBack
-          }
+          onClick={() => {
+            playSound("button_click");
+            if (gameMode === "chain") setShowChainSummary(true);
+            else onBack();
+          }}
           className="flex items-center gap-2 rounded-xl px-3 py-2 font-semibold text-sm transition-all hover:scale-105"
           style={{
             background: "oklch(var(--secondary))",
@@ -1026,7 +1171,12 @@ export function GameScreen({
           <button
             type="button"
             data-ocid="game.note_toggle"
-            onClick={() => setIsNoteMode((n) => !n)}
+            onClick={() => {
+              setIsNoteMode((n) => {
+                if (!n) noteModeUsedRef.current = true;
+                return !n;
+              });
+            }}
             className="flex flex-col items-center gap-0.5 rounded-2xl px-3 py-2 transition-all hover:scale-105"
             style={{
               background: isNoteMode
@@ -1122,15 +1272,19 @@ export function GameScreen({
                   {t("puzzleComplete")}
                 </h2>
                 {newBadges.length > 0 && (
-                  <div
-                    className="flex items-center justify-center gap-2 mb-4 px-4 py-2 rounded-full text-sm font-bold"
+                  <motion.div
+                    initial={{ scale: 0.8, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    className="flex items-center justify-center gap-2 mb-4 px-4 py-2 rounded-2xl text-sm font-bold"
                     style={{
-                      background: "oklch(var(--secondary))",
-                      color: "oklch(var(--primary))",
+                      background:
+                        "linear-gradient(135deg, oklch(0.72 0.19 52 / 0.15), oklch(0.62 0.23 340 / 0.15))",
+                      border: "1.5px solid oklch(0.72 0.19 52 / 0.4)",
+                      color: "oklch(var(--card-foreground))",
                     }}
                   >
-                    🏅 {t("newBadge")}
-                  </div>
+                    {newBadges[0]}
+                  </motion.div>
                 )}
                 {/* Tournament Score */}
                 {gameMode === "daily_tournament" && (
@@ -1213,22 +1367,82 @@ export function GameScreen({
                   "linear-gradient(135deg, oklch(0.18 0.06 26), oklch(0.25 0.08 20))",
               }}
             >
-              <div className="text-5xl mb-3">⏰</div>
+              <div className="text-5xl mb-3">{isComplete ? "🎉" : "⏰"}</div>
               <h2 className="text-2xl font-bold font-display text-white mb-2">
-                {t("timeUp")}
+                {isComplete ? t("puzzleComplete") : t("timeUp")}
               </h2>
-              <div className="text-white/70 text-sm mb-6">
-                {lang === "tr" ? `Combo: ${combo}` : `Combo: ${combo}`}
+              {/* Stats grid */}
+              <div className="grid grid-cols-2 gap-2 mb-5">
+                <div
+                  className="rounded-xl p-2.5 text-left"
+                  style={{ background: "oklch(1 0 0 / 0.08)" }}
+                >
+                  <div className="text-white/50 text-xs mb-0.5">
+                    {lang === "tr" ? "Combo" : "Combo"}
+                  </div>
+                  <div className="text-white font-bold text-lg">🔥 {combo}</div>
+                </div>
+                <div
+                  className="rounded-xl p-2.5 text-left"
+                  style={{ background: "oklch(1 0 0 / 0.08)" }}
+                >
+                  <div className="text-white/50 text-xs mb-0.5">
+                    {lang === "tr" ? "Hata" : "Errors"}
+                  </div>
+                  <div className="text-white font-bold text-lg">
+                    ❌ {errorCount}
+                  </div>
+                </div>
+                <div
+                  className="rounded-xl p-2.5 text-left"
+                  style={{ background: "oklch(1 0 0 / 0.08)" }}
+                >
+                  <div className="text-white/50 text-xs mb-0.5">
+                    {t("timeLabel")}
+                  </div>
+                  <div className="text-white font-bold text-lg">
+                    ⏱ {formatTime(SPEED_RUSH_DURATION - speedTimeLeft)}
+                  </div>
+                </div>
+                {isComplete && (
+                  <div
+                    className="rounded-xl p-2.5 text-left"
+                    style={{ background: "oklch(0.55 0.2 52 / 0.3)" }}
+                  >
+                    <div className="text-white/50 text-xs mb-0.5">
+                      {t("xpEarned")}
+                    </div>
+                    <div className="text-white font-bold text-lg">
+                      ⭐ +{earnedXP}
+                    </div>
+                  </div>
+                )}
               </div>
-              <button
-                type="button"
-                data-ocid="game.timeup.confirm_button"
-                onClick={onBack}
-                className="w-full bg-white font-bold py-3 rounded-2xl text-lg"
-                style={{ color: "oklch(0.4 0.18 26)" }}
-              >
-                {t("back")}
-              </button>
+              <div className="flex gap-2">
+                {onPlayAgain && (
+                  <button
+                    type="button"
+                    data-ocid="game.timeup.play_again_button"
+                    onClick={onPlayAgain}
+                    className="flex-1 font-bold py-3 rounded-2xl text-sm"
+                    style={{
+                      background: "oklch(0.55 0.2 145)",
+                      color: "white",
+                    }}
+                  >
+                    {t("playAgain")} ⚡
+                  </button>
+                )}
+                <button
+                  type="button"
+                  data-ocid="game.timeup.confirm_button"
+                  onClick={onBack}
+                  className="flex-1 bg-white font-bold py-3 rounded-2xl text-sm"
+                  style={{ color: "oklch(0.4 0.18 26)" }}
+                >
+                  {t("back")}
+                </button>
+              </div>
             </motion.div>
           </motion.div>
         )}
@@ -1269,15 +1483,49 @@ export function GameScreen({
               <div className="text-white/60 text-sm mb-6">
                 {formatTime(timer)} {t("time")}
               </div>
-              <button
-                type="button"
-                data-ocid="game.gameover.confirm_button"
-                onClick={onBack}
-                className="w-full bg-white font-bold py-3 rounded-2xl text-lg"
-                style={{ color: "oklch(0.4 0.2 340)" }}
-              >
-                {t("back")}
-              </button>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  data-ocid="game.gameover.play_again_button"
+                  onClick={() => {
+                    // Reset survival state and regenerate puzzle
+                    setShowGameOver(false);
+                    setIsComplete(false);
+                    setLives(3);
+                    setErrorCount(0);
+                    setHintsUsed(0);
+                    setHintsLeft(3);
+                    setTimer(0);
+                    setErrorCells(new Set());
+                    setNotes(new Map());
+                    setHintCells(new Set());
+                    setIsNoteMode(false);
+                    noteModeUsedRef.current = false;
+                    setIsLoading(true);
+                    setTimeout(() => {
+                      const { puzzle: p, solution: s } =
+                        generatePuzzle(effectiveDifficulty);
+                      setPuzzle(p);
+                      setSolution(s);
+                      setOriginalPuzzle(p.map((row) => [...row]));
+                      setIsLoading(false);
+                    }, 100);
+                  }}
+                  className="flex-1 font-bold py-3 rounded-2xl text-sm"
+                  style={{ background: "oklch(0.55 0.2 145)", color: "white" }}
+                >
+                  {lang === "tr" ? "Tekrar Dene 🔄" : "Try Again 🔄"}
+                </button>
+                <button
+                  type="button"
+                  data-ocid="game.gameover.confirm_button"
+                  onClick={onBack}
+                  className="flex-1 bg-white font-bold py-3 rounded-2xl text-sm"
+                  style={{ color: "oklch(0.4 0.2 340)" }}
+                >
+                  {t("back")}
+                </button>
+              </div>
             </motion.div>
           </motion.div>
         )}

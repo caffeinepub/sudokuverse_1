@@ -8,59 +8,16 @@ import { HomeScreen } from "./components/HomeScreen";
 import { ModeHubScreen } from "./components/ModeHubScreen";
 import { SettingsScreen } from "./components/SettingsScreen";
 import { StatsScreen } from "./components/StatsScreen";
-import { ThemePicker, ThemePickerButton } from "./components/ThemePicker";
+import { ThemePicker } from "./components/ThemePicker";
+import { SoundProvider, useSound } from "./context/SoundContext";
 import { ThemeProvider, useTheme } from "./context/ThemeContext";
 import { usePlayerData } from "./hooks/usePlayerData";
-import { LANGUAGES, type Lang } from "./i18n";
+import type { Lang } from "./i18n";
 import type { GameMode } from "./types/gameMode";
 
 const LANG_KEY = "sudokuverse_lang";
 
 type Screen = "home" | "modeHub" | "game" | "stats" | "badges" | "settings";
-
-const FLAG_MAP: Record<Lang, string> = {
-  tr: "🇹🇷",
-  en: "🇬🇧",
-  de: "🇩🇪",
-  fr: "🇫🇷",
-  es: "🇪🇸",
-  it: "🇮🇹",
-  pt: "🇧🇷",
-  ru: "🇷🇺",
-  ja: "🇯🇵",
-  ko: "🇰🇷",
-  zh: "🇨🇳",
-  ar: "🇸🇦",
-  hi: "🇮🇳",
-};
-
-function LangToggle({
-  lang,
-  onOpenSettings,
-}: {
-  lang: Lang;
-  onOpenSettings: () => void;
-}) {
-  const current = LANGUAGES.find((l) => l.code === lang);
-  return (
-    <button
-      type="button"
-      data-ocid="settings.lang.toggle"
-      onClick={onOpenSettings}
-      className="fixed top-4 right-4 z-50 rounded-full px-3 py-1.5 text-xs font-bold transition-all hover:scale-105 flex items-center gap-1"
-      style={{
-        background: "oklch(var(--card))",
-        border: "1.5px solid oklch(var(--border))",
-        color: "oklch(var(--primary))",
-        boxShadow: "0 2px 8px oklch(0 0 0 / 0.12)",
-        backdropFilter: "blur(8px)",
-      }}
-    >
-      <span>{FLAG_MAP[lang]}</span>
-      <span>{current?.code.toUpperCase() ?? "EN"}</span>
-    </button>
-  );
-}
 
 /** Full-screen atmospheric background layer */
 function AtmosphericBackground() {
@@ -127,10 +84,19 @@ function AppInner() {
   const [themePickerOpen, setThemePickerOpen] = useState(false);
 
   const { data: playerProfile, isLoading } = usePlayerData();
+  const { startThemeMusic, musicEnabled } = useSound();
+  const { theme } = useTheme();
 
   useEffect(() => {
     localStorage.setItem(LANG_KEY, lang);
   }, [lang]);
+
+  // Start theme music when theme changes (and music is enabled)
+  useEffect(() => {
+    if (musicEnabled) {
+      startThemeMusic(theme);
+    }
+  }, [theme, musicEnabled, startThemeMusic]);
 
   const handleOpenModes = () => setScreen("modeHub");
 
@@ -155,8 +121,6 @@ function AppInner() {
     exit: { opacity: 0, x: -30 },
   };
 
-  const showFloatingButtons = screen !== "settings" && screen !== "game";
-
   return (
     <div
       className="relative font-body"
@@ -170,16 +134,6 @@ function AppInner() {
     >
       {/* Atmospheric background (fixed, full-viewport) */}
       <AtmosphericBackground />
-
-      {/* Language quick toggle (visible on non-settings/non-game screens) */}
-      {showFloatingButtons && (
-        <LangToggle lang={lang} onOpenSettings={handleOpenSettings} />
-      )}
-
-      {/* Theme picker button (visible on non-settings/non-game screens) */}
-      {showFloatingButtons && (
-        <ThemePickerButton onClick={() => setThemePickerOpen(true)} />
-      )}
 
       {/* Theme Picker Modal */}
       <ThemePicker
@@ -201,6 +155,8 @@ function AppInner() {
               isLoading={isLoading}
               onOpenModes={handleOpenModes}
               onNavigate={handleNavigate}
+              onOpenThemePicker={() => setThemePickerOpen(true)}
+              onOpenSettings={handleOpenSettings}
             />
           </motion.div>
         )}
@@ -231,6 +187,7 @@ function AppInner() {
               gameMode={gameMode}
               lang={lang}
               onBack={handleBack}
+              onPlayAgain={() => setScreen("modeHub")}
             />
           </motion.div>
         )}
@@ -297,7 +254,9 @@ function AppInner() {
 export default function App() {
   return (
     <ThemeProvider>
-      <AppInner />
+      <SoundProvider>
+        <AppInner />
+      </SoundProvider>
     </ThemeProvider>
   );
 }

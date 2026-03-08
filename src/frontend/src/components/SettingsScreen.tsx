@@ -1,5 +1,6 @@
 import { motion } from "motion/react";
 import React from "react";
+import { useSound } from "../context/SoundContext";
 import { useTheme } from "../context/ThemeContext";
 import { LANGUAGES, type Lang } from "../i18n";
 import { THEMES } from "../themes";
@@ -136,6 +137,69 @@ const THEME_LABEL: Record<Lang, string> = {
   hi: "थीम",
 };
 
+const SOUND_LABELS: Record<string, Record<Lang, string>> = {
+  soundTitle: {
+    tr: "Ses & Müzik",
+    en: "Sound & Music",
+    de: "Sound & Musik",
+    fr: "Son & Musique",
+    es: "Sonido & Música",
+    it: "Suono & Musica",
+    pt: "Som & Música",
+    ru: "Звук и музыка",
+    ja: "サウンド＆ミュージック",
+    ko: "사운드 & 음악",
+    zh: "声音与音乐",
+    ar: "الصوت والموسيقى",
+    hi: "ध्वनि और संगीत",
+  },
+  sfxLabel: {
+    tr: "Ses Efektleri",
+    en: "Sound Effects",
+    de: "Soundeffekte",
+    fr: "Effets sonores",
+    es: "Efectos de sonido",
+    it: "Effetti sonori",
+    pt: "Efeitos sonoros",
+    ru: "Звуковые эффекты",
+    ja: "効果音",
+    ko: "효과음",
+    zh: "音效",
+    ar: "المؤثرات الصوتية",
+    hi: "ध्वनि प्रभाव",
+  },
+  musicLabel: {
+    tr: "Arka Plan Müziği",
+    en: "Background Music",
+    de: "Hintergrundmusik",
+    fr: "Musique de fond",
+    es: "Música de fondo",
+    it: "Musica di sottofondo",
+    pt: "Música de fundo",
+    ru: "Фоновая музыка",
+    ja: "バックグラウンドミュージック",
+    ko: "배경 음악",
+    zh: "背景音乐",
+    ar: "الموسيقى الخلفية",
+    hi: "पृष्ठभूमि संगीत",
+  },
+  volumeLabel: {
+    tr: "Ses",
+    en: "Volume",
+    de: "Lautstärke",
+    fr: "Volume",
+    es: "Volumen",
+    it: "Volume",
+    pt: "Volume",
+    ru: "Громкость",
+    ja: "音量",
+    ko: "볼륨",
+    zh: "音量",
+    ar: "مستوى الصوت",
+    hi: "वॉल्यूम",
+  },
+};
+
 export function SettingsScreen({
   lang,
   onLangChange,
@@ -144,6 +208,16 @@ export function SettingsScreen({
   const tips = TIPS_BY_LANG[lang] || TIPS_BY_LANG.en || [];
   const currentLang = LANGUAGES.find((l) => l.code === lang);
   const { theme: activeTheme, setTheme } = useTheme();
+  const {
+    sfxEnabled,
+    sfxVolume,
+    musicEnabled,
+    musicVolume,
+    toggleSfx,
+    toggleMusic,
+    setSfxVolume,
+    setMusicVolume,
+  } = useSound();
 
   return (
     <div
@@ -384,6 +458,156 @@ export function SettingsScreen({
                 </button>
               );
             })}
+          </div>
+        </motion.div>
+
+        {/* Sound & Music section */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.08 }}
+          className="rounded-2xl p-5"
+          style={{
+            background: "oklch(var(--card))",
+            border: "1.5px solid oklch(var(--border))",
+            boxShadow: "0 2px 12px oklch(var(--primary) / 0.06)",
+          }}
+        >
+          <h2
+            className="font-bold font-display text-base mb-4"
+            style={{ color: "oklch(var(--foreground))" }}
+          >
+            🔊 {SOUND_LABELS.soundTitle[lang]}
+          </h2>
+
+          {/* Sound Effects row */}
+          <div className="space-y-3">
+            <div
+              className="rounded-xl p-3"
+              style={{ background: "oklch(var(--muted))" }}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span
+                  className="text-sm font-semibold flex items-center gap-1.5"
+                  style={{ color: "oklch(var(--foreground))" }}
+                >
+                  {sfxEnabled ? "🔊" : "🔇"} {SOUND_LABELS.sfxLabel[lang]}
+                </span>
+                <button
+                  type="button"
+                  data-ocid="settings.sfx.toggle"
+                  onClick={toggleSfx}
+                  className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200"
+                  style={{
+                    background: sfxEnabled
+                      ? "oklch(var(--primary))"
+                      : "oklch(var(--border))",
+                  }}
+                >
+                  <span
+                    className="inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform duration-200"
+                    style={{
+                      transform: sfxEnabled
+                        ? "translateX(22px)"
+                        : "translateX(4px)",
+                    }}
+                  />
+                </button>
+              </div>
+              {sfxEnabled && (
+                <div className="flex items-center gap-2">
+                  <span
+                    className="text-xs"
+                    style={{ color: "oklch(var(--muted-foreground))" }}
+                  >
+                    {SOUND_LABELS.volumeLabel[lang]}
+                  </span>
+                  <input
+                    type="range"
+                    data-ocid="settings.sfx.volume.input"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={sfxVolume}
+                    onChange={(e) => setSfxVolume(Number(e.target.value))}
+                    className="flex-1 h-2 rounded-full cursor-pointer appearance-none"
+                    style={{
+                      accentColor: "oklch(var(--primary))",
+                    }}
+                  />
+                  <span
+                    className="text-xs font-bold w-8 text-right"
+                    style={{ color: "oklch(var(--primary))" }}
+                  >
+                    {Math.round(sfxVolume * 100)}%
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Background Music row */}
+            <div
+              className="rounded-xl p-3"
+              style={{ background: "oklch(var(--muted))" }}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span
+                  className="text-sm font-semibold flex items-center gap-1.5"
+                  style={{ color: "oklch(var(--foreground))" }}
+                >
+                  {musicEnabled ? "🎵" : "🎵"} {SOUND_LABELS.musicLabel[lang]}
+                </span>
+                <button
+                  type="button"
+                  data-ocid="settings.music.toggle"
+                  onClick={toggleMusic}
+                  className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200"
+                  style={{
+                    background: musicEnabled
+                      ? "oklch(var(--primary))"
+                      : "oklch(var(--border))",
+                  }}
+                >
+                  <span
+                    className="inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform duration-200"
+                    style={{
+                      transform: musicEnabled
+                        ? "translateX(22px)"
+                        : "translateX(4px)",
+                    }}
+                  />
+                </button>
+              </div>
+              {musicEnabled && (
+                <div className="flex items-center gap-2">
+                  <span
+                    className="text-xs"
+                    style={{ color: "oklch(var(--muted-foreground))" }}
+                  >
+                    {SOUND_LABELS.volumeLabel[lang]}
+                  </span>
+                  <input
+                    type="range"
+                    data-ocid="settings.music.volume.input"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={musicVolume}
+                    onChange={(e) => setMusicVolume(Number(e.target.value))}
+                    className="flex-1 h-2 rounded-full cursor-pointer appearance-none"
+                    style={{
+                      accentColor: "oklch(var(--primary))",
+                    }}
+                  />
+                  <span
+                    className="text-xs font-bold w-8 text-right"
+                    style={{ color: "oklch(var(--primary))" }}
+                  >
+                    {Math.round(musicVolume * 100)}%
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
         </motion.div>
 
