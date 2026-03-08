@@ -1,15 +1,18 @@
 import { AnimatePresence, motion } from "motion/react";
-import React, { useEffect } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import {
-  DailyTaskType,
-  type Difficulty,
-  type PlayerProfile,
-} from "../backend.d";
+import type { DailyTaskType, Difficulty, PlayerProfile } from "../backend.d";
 import { useSound } from "../context/SoundContext";
 import { useTheme } from "../context/ThemeContext";
-import { useDailyTasks } from "../hooks/useDailyTasks";
+import {
+  type FrontendTaskType,
+  getDailyTasksForToday,
+  getWeeklyExpertErrorlessCount,
+  useDailyTasks,
+} from "../hooks/useDailyTasks";
 import { useLevelSystem } from "../hooks/useLevelSystem";
+import { useNickname } from "../hooks/useNickname";
+import { useAddStreakBonus } from "../hooks/usePlayerData";
 import { useStreak } from "../hooks/useStreak";
 import { LANGUAGES, type Lang, useTranslation } from "../i18n";
 import { THEMES } from "../themes";
@@ -31,19 +34,8 @@ const FLAG_MAP: Record<Lang, string> = {
   hi: "🇮🇳",
 };
 
-// Extended task types that are frontend-only (not stored in backend)
-type ExtendedTaskType =
-  | DailyTaskType
-  | "solve_three_puzzles"
-  | "solve_hard_puzzle"
-  | "no_errors_puzzle"
-  | "speed_solve"
-  | "use_notes_mode"
-  | "solve_medium_plus"
-  | "chain_two";
-
 interface ExtendedDailyTask {
-  taskType: ExtendedTaskType;
+  taskType: FrontendTaskType;
   isCompleted: boolean;
   isFrontendOnly?: boolean;
 }
@@ -54,15 +46,15 @@ interface HomeScreenProps {
   isLoading: boolean;
   onPlay?: (difficulty: Difficulty) => void;
   onOpenModes: () => void;
-  onNavigate: (screen: "stats" | "badges" | "settings") => void;
+  onNavigate: (screen: "stats" | "badges" | "settings" | "profile") => void;
   onOpenThemePicker?: () => void;
   onOpenSettings?: () => void;
 }
 
-const TASK_EMOJIS: Record<ExtendedTaskType, string> = {
-  [DailyTaskType.solve_two_puzzles]: "🎯",
-  [DailyTaskType.solve_no_hints]: "🧠",
-  [DailyTaskType.solve_under_time]: "⚡",
+const TASK_EMOJIS: Record<FrontendTaskType, string> = {
+  solve_two_puzzles: "🎯",
+  solve_no_hints: "🧠",
+  solve_under_time: "⚡",
   solve_three_puzzles: "🔢",
   solve_hard_puzzle: "💪",
   no_errors_puzzle: "✨",
@@ -70,24 +62,13 @@ const TASK_EMOJIS: Record<ExtendedTaskType, string> = {
   use_notes_mode: "📝",
   solve_medium_plus: "🎖️",
   chain_two: "⛓️",
+  play_boss_battle: "🐉",
+  play_survival: "❤️",
+  play_blind_mode: "👁️",
+  play_star_collector: "⭐",
+  solve_five_puzzles: "5️⃣",
+  solve_expert_puzzle: "🏆",
 };
-
-const EXTRA_TASK_TYPES: Array<
-  Exclude<
-    ExtendedTaskType,
-    | DailyTaskType.solve_two_puzzles
-    | DailyTaskType.solve_no_hints
-    | DailyTaskType.solve_under_time
-  >
-> = [
-  "solve_three_puzzles",
-  "solve_hard_puzzle",
-  "no_errors_puzzle",
-  "speed_solve",
-  "use_notes_mode",
-  "solve_medium_plus",
-  "chain_two",
-];
 
 const WEEKLY_CHALLENGES = [
   "weekly_task_1",
@@ -143,10 +124,60 @@ const WEEKLY_CHALLENGE_PROGRESS: { current: () => number; target: number }[] = [
     },
     target: 3,
   },
-  { current: () => 0, target: 1 }, // weekly_task_3: all daily tasks (boolean)
-  { current: () => 0, target: 1 }, // weekly_task_4: speed_rush (boolean)
-  { current: () => 0, target: 1 }, // weekly_task_5: chain >= 5 (boolean)
-  { current: () => 0, target: 1 }, // weekly_task_6: expert 0 errors (boolean)
+  {
+    // weekly_task_3: all daily tasks done in one day — show how many daily tasks completed today
+    current: () => {
+      try {
+        const raw = localStorage.getItem("sudokuverse_daily_tasks_v2");
+        if (raw) {
+          const p = JSON.parse(raw) as {
+            date: string;
+            tasks: Record<string, boolean>;
+          };
+          const d = new Date();
+          const todayKey = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+          if (p.date === todayKey) {
+            return Object.values(p.tasks).filter(Boolean).length;
+          }
+        }
+      } catch (_) {}
+      return 0;
+    },
+    target: 10,
+  },
+  {
+    // weekly_task_4: speed_rush mode solve — show count of speed_rush sessions played
+    current: () => {
+      try {
+        const raw = localStorage.getItem("sudokuverse_mode_stats_v2");
+        if (raw) {
+          const p = JSON.parse(raw) as Record<
+            string,
+            { played: number; won: number }
+          >;
+          return p.speed_rush?.played ?? 0;
+        }
+      } catch (_) {}
+      return 0;
+    },
+    target: 1,
+  },
+  {
+    // weekly_task_5: chain >= 5 — show chain record
+    current: () => {
+      const record = Number.parseInt(
+        localStorage.getItem("sudokuverse_chain_record") ?? "0",
+        10,
+      );
+      return Math.min(record, 5);
+    },
+    target: 5,
+  },
+  {
+    // weekly_task_6: expert with 0 errors — use dedicated expert errorless counter
+    current: () => Math.min(getWeeklyExpertErrorlessCount(), 1),
+    target: 1,
+  },
   {
     // weekly_task_7: 3 different difficulties
     current: () => {
@@ -169,14 +200,35 @@ const WEEKLY_CHALLENGE_PROGRESS: { current: () => number; target: number }[] = [
   },
 ];
 
+const TASK_XP: Partial<Record<FrontendTaskType, number>> = {
+  solve_two_puzzles: 20,
+  solve_no_hints: 40,
+  solve_under_time: 30,
+  solve_three_puzzles: 30,
+  solve_hard_puzzle: 50,
+  no_errors_puzzle: 45,
+  speed_solve: 35,
+  use_notes_mode: 15,
+  solve_medium_plus: 35,
+  chain_two: 50,
+  play_boss_battle: 60,
+  play_survival: 40,
+  play_blind_mode: 50,
+  play_star_collector: 30,
+  solve_five_puzzles: 50,
+  solve_expert_puzzle: 70,
+};
+
 function getTaskLabel(
-  taskType: ExtendedTaskType,
+  taskType: FrontendTaskType,
+  lang: string,
   t: ReturnType<typeof useTranslation>,
 ): string {
-  const map: Partial<Record<ExtendedTaskType, string>> = {
-    [DailyTaskType.solve_two_puzzles]: t("task_solve_two_puzzles"),
-    [DailyTaskType.solve_no_hints]: t("task_solve_no_hints"),
-    [DailyTaskType.solve_under_time]: t("task_solve_under_time"),
+  const isTr = lang === "tr";
+  const map: Partial<Record<FrontendTaskType, string>> = {
+    solve_two_puzzles: t("task_solve_two_puzzles"),
+    solve_no_hints: t("task_solve_no_hints"),
+    solve_under_time: t("task_solve_under_time"),
     solve_three_puzzles: t("task_solve_three_puzzles"),
     solve_hard_puzzle: t("task_solve_hard_puzzle"),
     no_errors_puzzle: t("task_no_errors_puzzle"),
@@ -184,8 +236,45 @@ function getTaskLabel(
     use_notes_mode: t("task_use_notes_mode"),
     solve_medium_plus: t("task_solve_medium_plus"),
     chain_two: t("task_chain_two"),
+    play_boss_battle: isTr
+      ? "Boss Battle modunu oyna"
+      : "Play Boss Battle mode",
+    play_survival: isTr ? "Hayatta Kalma modunu oyna" : "Play Survival mode",
+    play_blind_mode: isTr ? "Kör Mod oyna" : "Play Blind Mode",
+    play_star_collector: isTr ? "Yıldız Toplayıcı oyna" : "Play Star Collector",
+    solve_five_puzzles: isTr ? "5 bulmaca çöz" : "Solve 5 puzzles",
+    solve_expert_puzzle: isTr
+      ? "Uzman seviyesinde bulmaca çöz"
+      : "Solve an Expert puzzle",
   };
   return map[taskType] ?? String(taskType);
+}
+
+function getSecsToMidnight(): number {
+  const now = new Date();
+  const midnight = new Date(now);
+  midnight.setHours(24, 0, 0, 0);
+  return Math.max(0, Math.floor((midnight.getTime() - now.getTime()) / 1000));
+}
+
+/** Returns seconds until next midnight */
+function useTimeUntilMidnight(): number {
+  const [secs, setSecs] = useState(getSecsToMidnight);
+  useEffect(() => {
+    const id = setInterval(() => setSecs(getSecsToMidnight()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return secs;
+}
+
+function formatCountdown(secs: number, lang: string): string {
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+  if (lang === "tr") {
+    return `${h}s ${m.toString().padStart(2, "0")}d ${s.toString().padStart(2, "0")}sn`;
+  }
+  return `${h}h ${m.toString().padStart(2, "0")}m ${s.toString().padStart(2, "0")}s`;
 }
 
 function DailyTasksPanel({
@@ -198,26 +287,20 @@ function DailyTasksPanel({
   frontendCompletedTasks: Partial<Record<string, boolean>>;
 }) {
   const t = useTranslation(lang);
+  const secsLeft = useTimeUntilMidnight();
 
-  const backendTasks: ExtendedDailyTask[] = (
-    playerProfile?.dailyTasks ?? [
-      { taskType: DailyTaskType.solve_two_puzzles, isCompleted: false },
-      { taskType: DailyTaskType.solve_no_hints, isCompleted: false },
-      { taskType: DailyTaskType.solve_under_time, isCompleted: false },
-    ]
-  ).map((task) => ({
-    taskType: task.taskType as ExtendedTaskType,
-    // Also check frontendCompletedTasks for backend-keyed tasks (same key names)
-    isCompleted: task.isCompleted || !!frontendCompletedTasks[task.taskType],
-  }));
+  // Get today's rotated task list
+  const todayTaskTypes = getDailyTasksForToday();
 
-  const extraTasks: ExtendedDailyTask[] = EXTRA_TASK_TYPES.map((taskType) => ({
+  const allTasks: ExtendedDailyTask[] = todayTaskTypes.map((taskType) => ({
     taskType,
-    isCompleted: !!frontendCompletedTasks[taskType],
+    isCompleted:
+      !!frontendCompletedTasks[taskType] ||
+      !!(playerProfile?.dailyTasks ?? []).find(
+        (t) => t.taskType === taskType && t.isCompleted,
+      ),
     isFrontendOnly: true,
   }));
-
-  const allTasks: ExtendedDailyTask[] = [...backendTasks, ...extraTasks];
   const completedCount = allTasks.filter((task) => task.isCompleted).length;
   const totalCount = allTasks.length;
   const allDone = completedCount === totalCount;
@@ -235,7 +318,7 @@ function DailyTasksPanel({
         boxShadow: "0 2px 12px oklch(var(--primary) / 0.06)",
       }}
     >
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-2">
         <h3
           className="font-bold font-display text-base"
           style={{ color: "oklch(var(--card-foreground))" }}
@@ -254,6 +337,27 @@ function DailyTasksPanel({
           }}
         >
           {completedCount}/{totalCount}
+        </span>
+      </div>
+      {/* Countdown to daily reset */}
+      <div
+        className="flex items-center gap-1.5 mb-2 text-xs"
+        style={{ color: "oklch(var(--muted-foreground))" }}
+      >
+        <span>🔄</span>
+        <span>
+          {lang === "tr" ? "Yenileme: " : "Resets in: "}
+          <span
+            className="font-bold font-display"
+            style={{
+              color:
+                secsLeft < 3600
+                  ? "oklch(0.62 0.23 340)"
+                  : "oklch(var(--muted-foreground))",
+            }}
+          >
+            {formatCountdown(secsLeft, lang)}
+          </span>
         </span>
       </div>
 
@@ -307,7 +411,7 @@ function DailyTasksPanel({
                 opacity: task.isCompleted ? 0.6 : 1,
               }}
             >
-              {getTaskLabel(task.taskType, t)}
+              {getTaskLabel(task.taskType, lang, t)}
             </span>
             <AnimatePresence>
               {task.isCompleted && (
@@ -321,6 +425,19 @@ function DailyTasksPanel({
                 </motion.span>
               )}
             </AnimatePresence>
+            {!task.isCompleted && TASK_XP[task.taskType] !== undefined && (
+              <span
+                className="text-xs font-bold px-1.5 py-0.5 rounded-full flex-shrink-0"
+                style={{
+                  background: "oklch(0.57 0.22 52 / 0.15)",
+                  color: "oklch(0.55 0.22 52)",
+                  border: "1px solid oklch(0.57 0.22 52 / 0.3)",
+                  fontSize: "9px",
+                }}
+              >
+                +{TASK_XP[task.taskType]} XP
+              </span>
+            )}
             {task.isFrontendOnly && !task.isCompleted && (
               <span
                 className="text-xs px-1.5 py-0.5 rounded-full flex-shrink-0"
@@ -423,7 +540,7 @@ function WeeklyChallengePanel({
           const isDone = (weeklyCompleted[index] ?? false) || badgeAwarded;
           const prog = WEEKLY_CHALLENGE_PROGRESS[index];
           const currentVal = isDone ? prog.target : prog.current();
-          const showProgress = prog.target > 1 && !isDone;
+          const showProgress = !isDone && (prog.target > 1 || currentVal > 0);
           const progressPct = Math.min(1, currentVal / prog.target);
           return (
             <motion.div
@@ -561,10 +678,18 @@ export function HomeScreen({
   const { musicEnabled, toggleMusic } = useSound();
   const { streak, isNewDay, bonusXP } = useStreak();
   const { currentLevel } = useLevelSystem();
-
-  // Show daily streak toast on new day
+  const { nickname } = useNickname();
+  const addStreakBonus = useAddStreakBonus();
+  const addStreakBonusRef = useRef(addStreakBonus.mutate);
   useEffect(() => {
-    if (isNewDay && streak > 0) {
+    addStreakBonusRef.current = addStreakBonus.mutate;
+  });
+
+  // Show daily streak toast on new day and award bonus XP to backend
+  useEffect(() => {
+    if (isNewDay && streak > 0 && bonusXP > 0) {
+      // Award streak bonus XP via dedicated backend function
+      addStreakBonusRef.current(bonusXP);
       setTimeout(() => {
         toast.success(
           lang === "tr"
@@ -591,6 +716,12 @@ export function HomeScreen({
       emoji: "🏅",
       label: t("badges"),
       ocid: "home.badges.link",
+    },
+    {
+      id: "profile" as const,
+      emoji: "👤",
+      label: lang === "tr" ? "Profil" : "Profile",
+      ocid: "home.profile.link",
     },
     {
       id: "settings" as const,
@@ -628,7 +759,7 @@ export function HomeScreen({
       />
 
       {/* Header */}
-      <header className="relative px-6 pt-4 pb-3">
+      <header className="relative px-6 pt-4 pb-3 overflow-hidden">
         <div className="flex items-start justify-between">
           <motion.div
             initial={{ opacity: 0, x: -20 }}
@@ -637,12 +768,21 @@ export function HomeScreen({
             <h1 className="text-3xl font-black font-display leading-tight gradient-text">
               SudokuVerse
             </h1>
-            <p
-              className="text-sm mt-0.5"
-              style={{ color: "oklch(var(--muted-foreground))" }}
-            >
-              {t("tagline")}
-            </p>
+            {nickname ? (
+              <p
+                className="text-sm mt-0.5 font-semibold"
+                style={{ color: "oklch(var(--primary))" }}
+              >
+                👋 {t("nicknameHello")}, {nickname}
+              </p>
+            ) : (
+              <p
+                className="text-sm mt-0.5"
+                style={{ color: "oklch(var(--muted-foreground))" }}
+              >
+                {t("tagline")}
+              </p>
+            )}
           </motion.div>
 
           {/* Rank badge + Level + Streak */}
@@ -707,14 +847,14 @@ export function HomeScreen({
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="mt-4"
+            className="mt-2"
           >
             <XPBar xp={playerProfile.xp} lang={lang} />
           </motion.div>
         )}
         {isLoading && (
           <div
-            className="mt-4 h-3 rounded-full animate-pulse"
+            className="mt-2 h-3 rounded-full animate-pulse"
             style={{ background: "oklch(var(--secondary))" }}
           />
         )}
@@ -724,14 +864,14 @@ export function HomeScreen({
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.15 }}
-          className="flex items-center gap-2 mt-3"
+          className="flex items-center gap-1.5 mt-2 flex-wrap"
         >
           {/* Theme pill */}
           <button
             type="button"
             data-ocid="home.theme.open_modal_button"
             onClick={onOpenThemePicker}
-            className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition-all hover:scale-105 active:scale-95"
+            className="flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold transition-all hover:scale-105 active:scale-95"
             style={{
               background: "oklch(var(--card) / 0.85)",
               border: "1.5px solid oklch(var(--border))",
@@ -752,7 +892,7 @@ export function HomeScreen({
             type="button"
             data-ocid="home.lang.open_modal_button"
             onClick={onOpenSettings}
-            className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition-all hover:scale-105 active:scale-95"
+            className="flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold transition-all hover:scale-105 active:scale-95"
             style={{
               background: "oklch(var(--card) / 0.85)",
               border: "1.5px solid oklch(var(--border))",
@@ -773,7 +913,7 @@ export function HomeScreen({
             type="button"
             data-ocid="home.music_toggle"
             onClick={toggleMusic}
-            className="flex items-center gap-1 rounded-full px-2.5 py-1.5 text-xs font-bold transition-all hover:scale-105 active:scale-95"
+            className="flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold transition-all hover:scale-105 active:scale-95"
             style={{
               background: musicEnabled
                 ? "oklch(var(--primary) / 0.15)"
@@ -835,7 +975,7 @@ export function HomeScreen({
             className="text-center text-xs"
             style={{ color: "oklch(var(--muted-foreground))" }}
           >
-            {lang === "tr" ? "8 farklı oyun modu" : "8 different game modes"}
+            {lang === "tr" ? "10 farklı oyun modu" : "10 different game modes"}
           </p>
         </motion.div>
 

@@ -5,6 +5,20 @@ import { getLevelTier, useLevelSystem } from "../hooks/useLevelSystem";
 import { type Lang, useTranslation } from "../i18n";
 import type { GameMode } from "../types/gameMode";
 
+// Read star total and chain record from localStorage
+function getStarTotalLocal(): number {
+  return Number.parseInt(
+    localStorage.getItem("sudokuverse_star_total") ?? "0",
+    10,
+  );
+}
+function getChainRecordLocal(): number {
+  return Number.parseInt(
+    localStorage.getItem("sudokuverse_chain_record") ?? "0",
+    10,
+  );
+}
+
 interface ModeHubScreenProps {
   lang: Lang;
   playerProfile: PlayerProfile | null;
@@ -126,6 +140,24 @@ const MODE_CONFIGS: ModeConfig[] = [
     locked: false,
     tag: { tr: "EFSANE", en: "EPIC" },
   },
+  {
+    id: "foggy",
+    emoji: "🌫️",
+    gradient:
+      "linear-gradient(135deg, oklch(0.35 0.12 240), oklch(0.5 0.16 260))",
+    shadowColor: "oklch(0.4 0.14 250 / 0.5)",
+    locked: false,
+    tag: { tr: "YENİ", en: "NEW" },
+  },
+  {
+    id: "one_error",
+    emoji: "☠️",
+    gradient:
+      "linear-gradient(135deg, oklch(0.22 0.1 10), oklch(0.38 0.18 350))",
+    shadowColor: "oklch(0.4 0.18 350 / 0.5)",
+    locked: false,
+    tag: { tr: "ZOR", en: "HARD" },
+  },
 ];
 
 const containerVariants = {
@@ -160,6 +192,49 @@ export function ModeHubScreen({
     recommendedDifficulty,
   );
   const [hoveredMode, setHoveredMode] = useState<GameMode | null>(null);
+  const [difficultyWarning, setDifficultyWarning] = useState<{
+    mode: GameMode;
+    difficulty: Difficulty;
+  } | null>(null);
+
+  // Modes with a fixed difficulty (ignore the difficulty selector for these)
+  const FIXED_DIFFICULTY_MODES: Partial<Record<GameMode, Difficulty>> = {
+    daily_tournament: Difficulty.medium,
+    foggy: Difficulty.medium,
+    one_error: Difficulty.medium,
+  };
+
+  // Modes that require higher skill level
+  const CHALLENGING_MODES: GameMode[] = [
+    "boss_battle",
+    "blind",
+    "one_error",
+    "chain",
+  ];
+  const DIFFICULTY_ORDER: Difficulty[] = [
+    Difficulty.easy,
+    Difficulty.medium,
+    Difficulty.hard,
+    Difficulty.expert,
+    Difficulty.master,
+  ];
+
+  function handleModeSelect(mode: GameMode, difficulty: Difficulty) {
+    // Use fixed difficulty for modes that don't use the selector
+    const fixedDiff = FIXED_DIFFICULTY_MODES[mode];
+    const effectiveDiff = fixedDiff ?? difficulty;
+
+    // Show warning if player is level < 20 and selects a challenging mode with hard+ difficulty
+    const isChallengingMode = CHALLENGING_MODES.includes(mode);
+    const diffIdx = DIFFICULTY_ORDER.indexOf(effectiveDiff);
+    const recIdx = DIFFICULTY_ORDER.indexOf(recommendedDifficulty);
+    // Warn if selected difficulty is 2+ tiers above recommended for challenging modes
+    if (isChallengingMode && diffIdx > recIdx + 1 && currentLevel < 30) {
+      setDifficultyWarning({ mode, difficulty: effectiveDiff });
+      return;
+    }
+    onSelectMode(mode, effectiveDiff);
+  }
 
   return (
     <div
@@ -242,7 +317,7 @@ export function ModeHubScreen({
           <span style={{ color: "oklch(var(--foreground))" }}>
             {lang === "tr"
               ? `Önerilen seviye: ${DIFFICULTY_CONFIG.find((d) => d.key === recommendedDifficulty)?.label.tr ?? ""}`
-              : `Recommended: ${DIFFICULTY_CONFIG.find((d) => d.key === recommendedDifficulty)?.label.en ?? ""}`}
+              : `${t("selectDifficulty")}: ${DIFFICULTY_CONFIG.find((d) => d.key === recommendedDifficulty)?.label.en ?? ""}`}
           </span>
         </motion.div>
 
@@ -278,13 +353,91 @@ export function ModeHubScreen({
                 )}
                 <span className="text-base">{emoji}</span>
                 <span className="text-xs font-bold leading-none">
-                  {label[lang]}
+                  {label[lang as "tr" | "en"] ?? label.en}
                 </span>
               </motion.button>
             );
           })}
         </div>
       </header>
+
+      {/* Difficulty warning modal */}
+      <AnimatePresence>
+        {difficultyWarning && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-6"
+            style={{
+              background: "oklch(0 0 0 / 0.6)",
+              backdropFilter: "blur(6px)",
+            }}
+          >
+            <motion.div
+              data-ocid="modehub.difficulty.warning.modal"
+              initial={{ scale: 0.85, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.85, opacity: 0 }}
+              className="w-full max-w-xs rounded-3xl p-7 text-center shadow-2xl"
+              style={{
+                background: "oklch(var(--card))",
+                border: "2px solid oklch(0.72 0.19 52 / 0.4)",
+              }}
+            >
+              <div className="text-4xl mb-3">⚠️</div>
+              <h3
+                className="font-black font-display text-lg mb-2"
+                style={{ color: "oklch(var(--foreground))" }}
+              >
+                {lang === "tr" ? "Dikkatli Ol!" : "Are You Ready?"}
+              </h3>
+              <p
+                className="text-sm mb-6"
+                style={{ color: "oklch(var(--muted-foreground))" }}
+              >
+                {lang === "tr"
+                  ? `Şu an Lv.${currentLevel}. Seçtiğin mod ve zorluk deneyimini aşabilir. Yine de devam etmek ister misin?`
+                  : `You're Lv.${currentLevel}. This mode & difficulty may be very challenging at your level. Still want to go for it?`}
+              </p>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  data-ocid="modehub.difficulty.warning.cancel_button"
+                  onClick={() => setDifficultyWarning(null)}
+                  className="flex-1 rounded-2xl py-3 font-bold text-sm"
+                  style={{
+                    background: "oklch(var(--secondary))",
+                    color: "oklch(var(--muted-foreground))",
+                  }}
+                >
+                  {lang === "tr" ? "Geri" : "Go Back"}
+                </button>
+                <button
+                  type="button"
+                  data-ocid="modehub.difficulty.warning.confirm_button"
+                  onClick={() => {
+                    if (difficultyWarning) {
+                      onSelectMode(
+                        difficultyWarning.mode,
+                        difficultyWarning.difficulty,
+                      );
+                      setDifficultyWarning(null);
+                    }
+                  }}
+                  className="flex-1 rounded-2xl py-3 font-bold text-sm text-white"
+                  style={{
+                    background:
+                      "linear-gradient(135deg, oklch(0.72 0.19 52), oklch(0.62 0.23 340))",
+                  }}
+                >
+                  {lang === "tr" ? "Devam Et! 💪" : "Let's Go! 💪"}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Mode Grid */}
       <main
@@ -308,7 +461,7 @@ export function ModeHubScreen({
                 key={mode.id}
                 data-ocid={`modehub.${mode.id}.button`}
                 variants={cardVariants}
-                onClick={() => onSelectMode(mode.id, selectedDifficulty)}
+                onClick={() => handleModeSelect(mode.id, selectedDifficulty)}
                 onHoverStart={() => setHoveredMode(mode.id)}
                 onHoverEnd={() => setHoveredMode(null)}
                 whileHover={{ scale: 1.04, y: -3 }}
@@ -344,7 +497,7 @@ export function ModeHubScreen({
                         fontSize: "0.6rem",
                       }}
                     >
-                      {mode.tag[lang]}
+                      {mode.tag[lang as "tr" | "en"] ?? mode.tag.en}
                     </div>
                   )}
                 </AnimatePresence>
@@ -373,6 +526,51 @@ export function ModeHubScreen({
                 >
                   {t(descKey)}
                 </div>
+
+                {/* Star total pill for star_collector */}
+                {mode.id === "star_collector" && getStarTotalLocal() > 0 && (
+                  <div
+                    className="mt-1 text-xs font-bold px-2 py-0.5 rounded-full self-start"
+                    style={{
+                      background: "oklch(1 0 0 / 0.18)",
+                      color: "oklch(1 0 0 / 0.9)",
+                      fontSize: "0.6rem",
+                    }}
+                  >
+                    ⭐ {getStarTotalLocal()}{" "}
+                    {lang === "tr" ? "yıldız" : "stars"}
+                  </div>
+                )}
+
+                {/* Chain record pill for chain mode */}
+                {mode.id === "chain" && getChainRecordLocal() > 0 && (
+                  <div
+                    className="mt-1 text-xs font-bold px-2 py-0.5 rounded-full self-start"
+                    style={{
+                      background: "oklch(1 0 0 / 0.18)",
+                      color: "oklch(1 0 0 / 0.9)",
+                      fontSize: "0.6rem",
+                    }}
+                  >
+                    🏆 {lang === "tr" ? "Rekor" : "Best"}: #
+                    {getChainRecordLocal()}
+                  </div>
+                )}
+
+                {/* Fixed difficulty indicator */}
+                {FIXED_DIFFICULTY_MODES[mode.id] !== undefined && (
+                  <div
+                    className="mt-1.5 text-xs font-semibold px-2 py-0.5 rounded-full self-start"
+                    style={{
+                      background: "oklch(1 0 0 / 0.15)",
+                      color: "oklch(1 0 0 / 0.85)",
+                      fontSize: "0.6rem",
+                      letterSpacing: "0.04em",
+                    }}
+                  >
+                    🔒 {lang === "tr" ? "Sabit Zorluk" : "Fixed Difficulty"}
+                  </div>
+                )}
 
                 {/* Bottom arrow indicator */}
                 <motion.div

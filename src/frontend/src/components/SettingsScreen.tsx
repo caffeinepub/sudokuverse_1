@@ -1,8 +1,9 @@
-import { motion } from "motion/react";
-import React from "react";
+import { AnimatePresence, motion } from "motion/react";
+import React, { useState } from "react";
 import { useSound } from "../context/SoundContext";
 import { useTheme } from "../context/ThemeContext";
-import { LANGUAGES, type Lang } from "../i18n";
+import { useNickname } from "../hooks/useNickname";
+import { LANGUAGES, type Lang, useTranslation } from "../i18n";
 import { THEMES } from "../themes";
 
 interface SettingsScreenProps {
@@ -200,14 +201,45 @@ const SOUND_LABELS: Record<string, Record<Lang, string>> = {
   },
 };
 
+const RESET_KEYS = [
+  "sudokuverse_streak_v1",
+  "sudokuverse_streak_history_v1",
+  "sudokuverse_daily_tasks_v2",
+  "sudokuverse_weekly_v2",
+  "sudokuverse_daily_solve_count_v2",
+  "sudokuverse_weekly_solve_count_v2",
+  "sudokuverse_weekly_hard_solves_v2",
+  "sudokuverse_weekly_difficulties_v2",
+  "sudokuverse_weekly_expert_errorless_v1",
+  "sudokuverse_daily_tournament",
+  "sudokuverse_chain_record",
+  "sudokuverse_star_total",
+  "sudokuverse_level_v1",
+  // Both v1 and v2 keys for mode stats (correct key used by useModeStats)
+  "sudokuverse_mode_stats_v1",
+  "sudokuverse_mode_stats_v2",
+  "sudokuverse_game_log_v1",
+  // Both keys for nickname (correct key used by useNickname)
+  "sudokuverse_nickname",
+  "sudokuverse_nickname_v1",
+  "sudokuverse_tutorial_shown_v1",
+  "sudokuverse_tutorial_done", // TutorialOverlay key
+  "sudokuverse_badge_dates_v1",
+  "sudokuverse_uuid",
+];
+
 export function SettingsScreen({
   lang,
   onLangChange,
   onBack,
 }: SettingsScreenProps) {
+  const t = useTranslation(lang);
   const tips = TIPS_BY_LANG[lang] || TIPS_BY_LANG.en || [];
   const currentLang = LANGUAGES.find((l) => l.code === lang);
-  const { theme: activeTheme, setTheme } = useTheme();
+  const { theme: activeTheme, setTheme, bgOpacity, setBgOpacity } = useTheme();
+  const { nickname, setNickname } = useNickname();
+  const [nicknameInput, setNicknameInput] = useState(nickname);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
   const {
     sfxEnabled,
     sfxVolume,
@@ -219,13 +251,22 @@ export function SettingsScreen({
     setMusicVolume,
   } = useSound();
 
+  function handleResetData() {
+    for (const key of RESET_KEYS) {
+      localStorage.removeItem(key);
+    }
+    setShowResetConfirm(false);
+    // Reload the page to reset all state
+    window.location.reload();
+  }
+
   return (
     <div
       className="flex flex-col"
       style={{
         height: "100dvh",
         overflowY: "auto",
-        background: "oklch(var(--background))",
+        background: "transparent",
       }}
     >
       {/* Header */}
@@ -461,6 +502,105 @@ export function SettingsScreen({
           </div>
         </motion.div>
 
+        {/* Player Profile / Nickname section */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.06 }}
+          className="rounded-2xl p-5"
+          style={{
+            background: "oklch(var(--card))",
+            border: "1.5px solid oklch(var(--border))",
+            boxShadow: "0 2px 12px oklch(var(--primary) / 0.06)",
+          }}
+        >
+          <h2
+            className="font-bold font-display text-base mb-4"
+            style={{ color: "oklch(var(--foreground))" }}
+          >
+            👤 {t("playerProfile")}
+          </h2>
+          <div className="space-y-3">
+            <label className="block">
+              <span
+                className="text-xs font-semibold mb-1 block"
+                style={{ color: "oklch(var(--muted-foreground))" }}
+              >
+                {t("nickname")}
+              </span>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  data-ocid="settings.nickname.input"
+                  maxLength={20}
+                  value={nicknameInput}
+                  onChange={(e) => setNicknameInput(e.target.value)}
+                  placeholder={t("nicknamePlaceholder")}
+                  className="flex-1 rounded-xl px-3 py-2 text-sm font-semibold outline-none transition-all"
+                  style={{
+                    background: "oklch(var(--muted))",
+                    border: "1.5px solid oklch(var(--border))",
+                    color: "oklch(var(--foreground))",
+                  }}
+                />
+                <button
+                  type="button"
+                  data-ocid="settings.nickname.save_button"
+                  onClick={() => setNickname(nicknameInput)}
+                  className="rounded-xl px-3 py-2 text-sm font-bold transition-all hover:scale-105"
+                  style={{
+                    background: "oklch(var(--primary))",
+                    color: "oklch(var(--primary-foreground))",
+                  }}
+                >
+                  ✓
+                </button>
+              </div>
+            </label>
+          </div>
+        </motion.div>
+
+        {/* Background Opacity section */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.07 }}
+          className="rounded-2xl p-5"
+          style={{
+            background: "oklch(var(--card))",
+            border: "1.5px solid oklch(var(--border))",
+            boxShadow: "0 2px 12px oklch(var(--primary) / 0.06)",
+          }}
+        >
+          <h2
+            className="font-bold font-display text-base mb-4"
+            style={{ color: "oklch(var(--foreground))" }}
+          >
+            🖼️ {t("bgOpacityLabel")}
+          </h2>
+          <div className="flex items-center gap-3">
+            <span className="text-lg">🌫️</span>
+            <input
+              type="range"
+              data-ocid="settings.bg_opacity.input"
+              min={0.1}
+              max={1}
+              step={0.05}
+              value={bgOpacity}
+              onChange={(e) => setBgOpacity(Number(e.target.value))}
+              className="flex-1 h-2 rounded-full cursor-pointer appearance-none"
+              style={{ accentColor: "oklch(var(--primary))" }}
+            />
+            <span className="text-lg">🌟</span>
+            <span
+              className="text-xs font-bold w-10 text-right"
+              style={{ color: "oklch(var(--primary))" }}
+            >
+              {Math.round(bgOpacity * 100)}%
+            </span>
+          </div>
+        </motion.div>
+
         {/* Sound & Music section */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -555,7 +695,7 @@ export function SettingsScreen({
                   className="text-sm font-semibold flex items-center gap-1.5"
                   style={{ color: "oklch(var(--foreground))" }}
                 >
-                  {musicEnabled ? "🎵" : "🎵"} {SOUND_LABELS.musicLabel[lang]}
+                  {musicEnabled ? "🎵" : "🔇"} {SOUND_LABELS.musicLabel[lang]}
                 </span>
                 <button
                   type="button"
@@ -611,11 +751,160 @@ export function SettingsScreen({
           </div>
         </motion.div>
 
-        {/* About section */}
+        {/* Data Reset section */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
+          transition={{ delay: 0.12 }}
+          className="rounded-2xl p-5"
+          style={{
+            background: "oklch(var(--card))",
+            border: "1.5px solid oklch(0.62 0.23 340 / 0.3)",
+            boxShadow: "0 2px 12px oklch(0.62 0.23 340 / 0.06)",
+          }}
+        >
+          <h2
+            className="font-bold font-display text-base mb-2"
+            style={{ color: "oklch(var(--foreground))" }}
+          >
+            ⚠️{" "}
+            {lang === "tr"
+              ? "Veri Yönetimi"
+              : lang === "de"
+                ? "Datenverwaltung"
+                : lang === "fr"
+                  ? "Gestion des données"
+                  : lang === "es"
+                    ? "Gestión de datos"
+                    : lang === "ja"
+                      ? "データ管理"
+                      : lang === "ko"
+                        ? "데이터 관리"
+                        : lang === "zh"
+                          ? "数据管理"
+                          : lang === "ar"
+                            ? "إدارة البيانات"
+                            : lang === "ru"
+                              ? "Управление данными"
+                              : "Data Management"}
+          </h2>
+          <p
+            className="text-xs mb-4"
+            style={{ color: "oklch(var(--muted-foreground))" }}
+          >
+            {lang === "tr"
+              ? "Tüm ilerleme, seviye, rozet ve istatistikleri sıfırlar. Bu işlem geri alınamaz."
+              : "Resets all progress, levels, badges and statistics. This action cannot be undone."}
+          </p>
+          <button
+            type="button"
+            data-ocid="settings.reset_data.open_modal_button"
+            onClick={() => setShowResetConfirm(true)}
+            className="w-full rounded-xl py-3 font-bold text-sm transition-all hover:scale-105"
+            style={{
+              background: "oklch(0.62 0.23 340 / 0.12)",
+              border: "1.5px solid oklch(0.62 0.23 340 / 0.4)",
+              color: "oklch(0.55 0.22 340)",
+            }}
+          >
+            🗑️{" "}
+            {lang === "tr"
+              ? "Tüm Veriyi Sıfırla"
+              : lang === "de"
+                ? "Alle Daten zurücksetzen"
+                : lang === "fr"
+                  ? "Réinitialiser toutes les données"
+                  : lang === "es"
+                    ? "Restablecer todos los datos"
+                    : lang === "ja"
+                      ? "すべてのデータをリセット"
+                      : lang === "ko"
+                        ? "모든 데이터 초기화"
+                        : lang === "zh"
+                          ? "重置所有数据"
+                          : lang === "ar"
+                            ? "إعادة تعيين جميع البيانات"
+                            : lang === "ru"
+                              ? "Сбросить все данные"
+                              : "Reset All Data"}
+          </button>
+        </motion.div>
+
+        {/* Reset confirmation modal */}
+        <AnimatePresence>
+          {showResetConfirm && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-6"
+              style={{
+                background: "oklch(0 0 0 / 0.6)",
+                backdropFilter: "blur(6px)",
+              }}
+            >
+              <motion.div
+                data-ocid="settings.reset_data.dialog"
+                initial={{ scale: 0.85, y: 20 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.85, opacity: 0 }}
+                className="w-full max-w-xs rounded-3xl p-7 text-center shadow-2xl"
+                style={{
+                  background: "oklch(var(--card))",
+                  border: "2px solid oklch(0.62 0.23 340 / 0.4)",
+                }}
+              >
+                <div className="text-4xl mb-3">⚠️</div>
+                <h3
+                  className="font-black font-display text-lg mb-2"
+                  style={{ color: "oklch(var(--foreground))" }}
+                >
+                  {lang === "tr" ? "Emin misin?" : "Are you sure?"}
+                </h3>
+                <p
+                  className="text-sm mb-6"
+                  style={{ color: "oklch(var(--muted-foreground))" }}
+                >
+                  {lang === "tr"
+                    ? "Tüm ilerleme, XP, rozet ve serilerin silinecek. Bu işlem geri alınamaz!"
+                    : "All progress, XP, badges and streaks will be deleted. This cannot be undone!"}
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    data-ocid="settings.reset_data.cancel_button"
+                    onClick={() => setShowResetConfirm(false)}
+                    className="flex-1 rounded-2xl py-3 font-bold text-sm"
+                    style={{
+                      background: "oklch(var(--secondary))",
+                      color: "oklch(var(--muted-foreground))",
+                    }}
+                  >
+                    {lang === "tr" ? "İptal" : "Cancel"}
+                  </button>
+                  <button
+                    type="button"
+                    data-ocid="settings.reset_data.confirm_button"
+                    onClick={handleResetData}
+                    className="flex-1 rounded-2xl py-3 font-bold text-sm text-white"
+                    style={{
+                      background:
+                        "linear-gradient(135deg, oklch(0.5 0.22 26), oklch(0.62 0.23 340))",
+                    }}
+                  >
+                    {lang === "tr" ? "Sıfırla 🗑️" : "Reset 🗑️"}
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Privacy Policy */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.13 }}
           className="rounded-2xl p-5"
           style={{
             background: "oklch(var(--card))",
@@ -627,81 +916,75 @@ export function SettingsScreen({
             className="font-bold font-display text-base mb-3"
             style={{ color: "oklch(var(--foreground))" }}
           >
-            ℹ️{" "}
+            🔒{" "}
             {lang === "tr"
-              ? "Hakkında"
+              ? "Gizlilik"
               : lang === "de"
-                ? "Über"
+                ? "Datenschutz"
                 : lang === "fr"
-                  ? "À propos"
+                  ? "Confidentialité"
                   : lang === "es"
-                    ? "Acerca de"
+                    ? "Privacidad"
                     : lang === "it"
-                      ? "Informazioni"
+                      ? "Privacy"
                       : lang === "pt"
-                        ? "Sobre"
+                        ? "Privacidade"
                         : lang === "ru"
-                          ? "О приложении"
+                          ? "Конфиденциальность"
                           : lang === "ja"
-                            ? "アプリについて"
+                            ? "プライバシー"
                             : lang === "ko"
-                              ? "앱 정보"
+                              ? "개인정보"
                               : lang === "zh"
-                                ? "关于"
+                                ? "隐私"
                                 : lang === "ar"
-                                  ? "عن التطبيق"
+                                  ? "الخصوصية"
                                   : lang === "hi"
-                                    ? "के बारे में"
-                                    : "About"}
+                                    ? "गोपनीयता"
+                                    : "Privacy"}
           </h2>
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span style={{ color: "oklch(var(--muted-foreground))" }}>
-                {lang === "tr"
-                  ? "Versiyon"
-                  : lang === "de"
-                    ? "Version"
-                    : lang === "fr"
-                      ? "Version"
-                      : lang === "es"
-                        ? "Versión"
-                        : lang === "it"
-                          ? "Versione"
-                          : lang === "pt"
-                            ? "Versão"
-                            : lang === "ru"
-                              ? "Версия"
-                              : lang === "ja"
-                                ? "バージョン"
-                                : lang === "ko"
-                                  ? "버전"
-                                  : lang === "zh"
-                                    ? "版本"
-                                    : lang === "ar"
-                                      ? "الإصدار"
-                                      : lang === "hi"
-                                        ? "संस्करण"
-                                        : "Version"}
-              </span>
-              <span
-                className="font-bold"
-                style={{ color: "oklch(var(--foreground))" }}
-              >
-                1.0.0
-              </span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span style={{ color: "oklch(var(--muted-foreground))" }}>
-                Platform
-              </span>
-              <span
-                className="font-bold"
-                style={{ color: "oklch(var(--foreground))" }}
-              >
-                Internet Computer
-              </span>
-            </div>
-          </div>
+          <a
+            href="https://sites.google.com/view/sudokuverse/privacy-policy"
+            target="_blank"
+            rel="noopener noreferrer"
+            data-ocid="settings.privacy_policy.link"
+            className="flex items-center justify-between rounded-xl px-4 py-3 font-semibold text-sm transition-all hover:scale-105 active:scale-95"
+            style={{
+              background: "oklch(var(--secondary))",
+              border: "1.5px solid oklch(var(--primary) / 0.3)",
+              color: "oklch(var(--primary))",
+              textDecoration: "none",
+            }}
+          >
+            <span>
+              {lang === "tr"
+                ? "Gizlilik Politikası"
+                : lang === "de"
+                  ? "Datenschutzrichtlinie"
+                  : lang === "fr"
+                    ? "Politique de confidentialité"
+                    : lang === "es"
+                      ? "Política de privacidad"
+                      : lang === "it"
+                        ? "Informativa sulla privacy"
+                        : lang === "pt"
+                          ? "Política de privacidade"
+                          : lang === "ru"
+                            ? "Политика конфиденциальности"
+                            : lang === "ja"
+                              ? "プライバシーポリシー"
+                              : lang === "ko"
+                                ? "개인정보 처리방침"
+                                : lang === "zh"
+                                  ? "隐私政策"
+                                  : lang === "ar"
+                                    ? "سياسة الخصوصية"
+                                    : lang === "hi"
+                                      ? "गोपनीयता नीति"
+                                      : "Privacy Policy"}
+            </span>
+            <span className="text-lg">↗</span>
+          </a>
         </motion.div>
 
         {/* How to play */}

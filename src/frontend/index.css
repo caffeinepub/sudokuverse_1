@@ -70,6 +70,7 @@
     --sidebar-ring: 0.52 0.24 292;
 
     /* SudokuVerse Custom tokens */
+    --game-board-bg: 0.96 0.02 260;
     --game-cell-given: 0.94 0.03 250;
     --game-cell-selected: 0.82 0.12 240;
     --game-cell-highlight: 0.93 0.06 260;
@@ -104,6 +105,7 @@
     --border: 0.28 0.05 264;
     --input: 0.25 0.04 264;
     --ring: 0.65 0.3 292;
+    --game-board-bg: 0.14 0.03 264;
     --game-cell-given: 0.2 0.04 264;
     --game-cell-selected: 0.32 0.1 264;
     --game-cell-highlight: 0.22 0.04 264;
@@ -132,6 +134,7 @@
     --border: 0.25 0.06 240;
     --input: 0.22 0.05 240;
     --ring: 0.9 0.25 100;
+    --game-board-bg: 0.1 0.03 240;
     --game-cell-given: 0.18 0.04 240;
     --game-cell-selected: 0.28 0.08 100;
     --game-cell-highlight: 0.2 0.04 240;
@@ -140,7 +143,7 @@
     --game-cell-player: 0.9 0.25 100;
   }
 
-  [data-theme="ocean"] {
+  [data-theme="ocean-light-unused"] {
     --background: 0.97 0.02 220;
     --foreground: 0.18 0.06 220;
     --card: 1 0 0;
@@ -160,6 +163,7 @@
     --border: 0.85 0.04 215;
     --input: 0.88 0.04 215;
     --ring: 0.52 0.2 195;
+    --game-board-bg: 0.95 0.04 215;
     --game-cell-given: 0.92 0.04 215;
     --game-cell-selected: 0.78 0.1 195;
     --game-cell-highlight: 0.9 0.06 210;
@@ -168,7 +172,7 @@
     --game-cell-player: 0.52 0.2 195;
   }
 
-  [data-theme="sunset"] {
+  [data-theme="sunset-light-unused"] {
     --background: 0.97 0.02 70;
     --foreground: 0.2 0.05 40;
     --card: 1 0 0;
@@ -188,6 +192,7 @@
     --border: 0.88 0.04 60;
     --input: 0.9 0.04 60;
     --ring: 0.62 0.22 40;
+    --game-board-bg: 0.95 0.04 60;
     --game-cell-given: 0.93 0.04 60;
     --game-cell-selected: 0.82 0.1 40;
     --game-cell-highlight: 0.92 0.06 55;
@@ -216,6 +221,7 @@
     --border: 0.82 0.04 15;
     --input: 0.85 0.03 15;
     --ring: 0.52 0.24 25;
+    --game-board-bg: 0.91 0.03 10;
     --game-cell-given: 0.88 0.03 10;
     --game-cell-selected: 0.78 0.1 25;
     --game-cell-highlight: 0.86 0.04 10;
@@ -244,6 +250,7 @@
     --border: 0.28 0.07 215;
     --input: 0.25 0.06 215;
     --ring: 0.72 0.22 195;
+    --game-board-bg: 0.14 0.06 218;
     --game-cell-given: 0.22 0.06 215;
     --game-cell-selected: 0.35 0.14 195;
     --game-cell-highlight: 0.24 0.06 210;
@@ -272,6 +279,7 @@
     --border: 0.32 0.08 40;
     --input: 0.28 0.07 40;
     --ring: 0.82 0.22 50;
+    --game-board-bg: 0.19 0.07 38;
     --game-cell-given: 0.26 0.07 40;
     --game-cell-selected: 0.4 0.15 50;
     --game-cell-highlight: 0.28 0.06 45;
@@ -300,6 +308,7 @@
     --border: 0.22 0.08 240;
     --input: 0.18 0.06 240;
     --ring: 0.85 0.28 100;
+    --game-board-bg: 0.07 0.04 240;
     --game-cell-given: 0.14 0.05 240;
     --game-cell-selected: 0.28 0.12 100;
     --game-cell-highlight: 0.16 0.05 240;
@@ -328,6 +337,7 @@
     --border: 0.28 0.08 145;
     --input: 0.25 0.07 145;
     --ring: 0.72 0.22 145;
+    --game-board-bg: 0.15 0.06 145;
     --game-cell-given: 0.24 0.06 145;
     --game-cell-selected: 0.35 0.14 145;
     --game-cell-highlight: 0.26 0.06 140;

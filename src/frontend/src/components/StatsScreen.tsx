@@ -1,7 +1,7 @@
 import { motion } from "motion/react";
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import type { PlayerProfile } from "../backend.d";
-import { loadModeStats } from "../hooks/useModeStats";
+import { buildFilteredStats, loadModeStats } from "../hooks/useModeStats";
 import { type Lang, useTranslation } from "../i18n";
 
 // ---- Mini bar chart for mode stats ----
@@ -123,14 +123,41 @@ function formatTime(seconds: number): string {
   return `${m}m ${s}s`;
 }
 
+type StatsFilter = "today" | "week" | "all";
+
 export function StatsScreen({ lang, playerProfile, onBack }: StatsScreenProps) {
   const t = useTranslation(lang);
-  const modeStats = loadModeStats();
+  const [filter, setFilter] = useState<StatsFilter>("all");
+  const modeStats = useMemo(() => buildFilteredStats(filter), [filter]);
+  void loadModeStats; // kept for type reference
 
   const stats = playerProfile?.stats;
-  const totalSolved = Number(playerProfile?.puzzlesSolved ?? 0);
-  const totalHints = Number(playerProfile?.hintsUsed ?? 0);
-  const totalErrors = Number(playerProfile?.errorsMade ?? 0);
+
+  // For "all" filter, use backend cumulative data (most accurate)
+  // For "today"/"week" filters, sum up from game log via modeStats
+  const totalSolved = useMemo(() => {
+    if (filter === "all") return Number(playerProfile?.puzzlesSolved ?? 0);
+    // Sum played across all modes from filtered log
+    return (
+      modeStats.classic.played +
+      modeStats.speed_rush.played +
+      modeStats.survival.played +
+      modeStats.chain.played +
+      modeStats.star_collector.played +
+      modeStats.boss_battle.played +
+      modeStats.daily_tournament.played +
+      modeStats.blind.played +
+      modeStats.foggy.played +
+      modeStats.one_error.played
+    );
+  }, [filter, playerProfile, modeStats]);
+
+  const totalHints = Number(
+    filter === "all" ? (playerProfile?.hintsUsed ?? 0) : 0,
+  );
+  const totalErrors = Number(
+    filter === "all" ? (playerProfile?.errorsMade ?? 0) : 0,
+  );
 
   const difficultyStats = [
     {
@@ -181,8 +208,10 @@ export function StatsScreen({ lang, playerProfile, onBack }: StatsScreenProps) {
         modeStats.star_collector.played,
         modeStats.boss_battle.played,
         modeStats.blind.played,
+        modeStats.foggy.played,
+        modeStats.one_error.played,
       ],
-      labels: ["♟️", "⚡", "❤️", "⛓️", "⭐", "🐉", "👁️"],
+      labels: ["♟️", "⚡", "❤️", "⛓️", "⭐", "🐉", "👁️", "🌫️", "☠️"],
     }),
     [modeStats],
   );
@@ -192,83 +221,130 @@ export function StatsScreen({ lang, playerProfile, onBack }: StatsScreenProps) {
     () =>
       [
         {
-          name: lang === "tr" ? "Klasik" : "Classic",
+          name: t("mode_classic"),
           won: modeStats.classic.won,
           played: modeStats.classic.played,
           color: "oklch(0.57 0.22 220)",
         },
         {
-          name: lang === "tr" ? "Hayatta Kalma" : "Survival",
+          name: t("mode_survival"),
           won: modeStats.survival.won,
           played: modeStats.survival.played,
           color: "oklch(0.5 0.23 0)",
         },
         {
-          name: lang === "tr" ? "Boss" : "Boss",
+          name: "Boss",
           won: modeStats.boss_battle.won,
           played: modeStats.boss_battle.played,
           color: "oklch(0.45 0.15 20)",
         },
         {
-          name: lang === "tr" ? "Kör Mod" : "Blind",
+          name: t("mode_blind"),
           won: modeStats.blind.won,
           played: modeStats.blind.played,
           color: "oklch(0.3 0.15 275)",
         },
+        {
+          name: t("mode_foggy"),
+          won: modeStats.foggy.won,
+          played: modeStats.foggy.played,
+          color: "oklch(0.42 0.14 250)",
+        },
+        {
+          name: t("mode_one_error"),
+          won: modeStats.one_error.won,
+          played: modeStats.one_error.played,
+          color: "oklch(0.4 0.18 350)",
+        },
       ].filter((m) => m.played > 0),
-    [modeStats, lang],
+    [modeStats, t],
   );
+
+  const playedLabel =
+    lang === "tr"
+      ? "Oynandı"
+      : lang === "ar"
+        ? "مُلعب"
+        : lang === "hi"
+          ? "खेले"
+          : lang === "ja"
+            ? "プレイ"
+            : lang === "ko"
+              ? "플레이"
+              : lang === "zh"
+                ? "已玩"
+                : lang === "ru"
+                  ? "Сыграно"
+                  : lang === "de"
+                    ? "Gespielt"
+                    : lang === "fr"
+                      ? "Joué"
+                      : lang === "es"
+                        ? "Jugado"
+                        : lang === "it"
+                          ? "Giocato"
+                          : lang === "pt"
+                            ? "Jogado"
+                            : "Played";
+  const wonLabel =
+    lang === "tr"
+      ? "Kazanıldı"
+      : lang === "ar"
+        ? "فاز"
+        : lang === "hi"
+          ? "जीते"
+          : lang === "ja"
+            ? "勝利"
+            : lang === "ko"
+              ? "승리"
+              : lang === "zh"
+                ? "获胜"
+                : lang === "ru"
+                  ? "Побед"
+                  : lang === "de"
+                    ? "Gewonnen"
+                    : lang === "fr"
+                      ? "Gagné"
+                      : lang === "es"
+                        ? "Ganado"
+                        : lang === "it"
+                          ? "Vinto"
+                          : lang === "pt"
+                            ? "Vencido"
+                            : "Won";
 
   const modeCards = [
     {
       id: "classic",
       emoji: "♟️",
-      name: lang === "tr" ? "Klasik" : "Classic",
+      name: t("mode_classic"),
       stats: [
-        {
-          label: lang === "tr" ? "Oynandı" : "Played",
-          value: modeStats.classic.played,
-        },
-        {
-          label: lang === "tr" ? "Kazanıldı" : "Won",
-          value: modeStats.classic.won,
-        },
+        { label: playedLabel, value: modeStats.classic.played },
+        { label: wonLabel, value: modeStats.classic.won },
       ],
       color: "oklch(0.57 0.22 220)",
     },
     {
       id: "speed_rush",
       emoji: "⚡",
-      name: lang === "tr" ? "Hız Modu" : "Speed Rush",
+      name: t("mode_speed_rush"),
       stats: [
-        {
-          label: lang === "tr" ? "Oynandı" : "Played",
-          value: modeStats.speed_rush.played,
-        },
+        { label: playedLabel, value: modeStats.speed_rush.played },
         {
           label: lang === "tr" ? "En İyi Combo" : "Best Combo",
           value: modeStats.speed_rush.bestCombo,
         },
-        {
-          label: lang === "tr" ? "Kazanıldı" : "Won",
-          value: modeStats.speed_rush.won,
-        },
+        { label: wonLabel, value: modeStats.speed_rush.won },
       ],
       color: "oklch(0.72 0.19 52)",
     },
     {
       id: "survival",
       emoji: "❤️",
-      name: lang === "tr" ? "Hayatta Kalma" : "Survival",
+      name: t("mode_survival"),
       stats: [
-        {
-          label: lang === "tr" ? "Oynandı" : "Played",
-          value: modeStats.survival.played,
-        },
-        {
-          label: lang === "tr" ? "Kazanıldı" : "Won",
-          value: modeStats.survival.won,
-        },
+        { label: playedLabel, value: modeStats.survival.played },
+        { label: wonLabel, value: modeStats.survival.won },
         {
           label: lang === "tr" ? "En İyi Can" : "Best Lives",
           value: modeStats.survival.bestLives,
@@ -279,12 +355,9 @@ export function StatsScreen({ lang, playerProfile, onBack }: StatsScreenProps) {
     {
       id: "chain",
       emoji: "⛓️",
-      name: lang === "tr" ? "Zincirleme" : "Chain Mode",
+      name: t("mode_chain"),
       stats: [
-        {
-          label: lang === "tr" ? "Oynandı" : "Played",
-          value: modeStats.chain.played,
-        },
+        { label: playedLabel, value: modeStats.chain.played },
         {
           label: lang === "tr" ? "En İyi Zincir" : "Best Chain",
           value: modeStats.chain.bestChain,
@@ -295,12 +368,9 @@ export function StatsScreen({ lang, playerProfile, onBack }: StatsScreenProps) {
     {
       id: "star_collector",
       emoji: "⭐",
-      name: lang === "tr" ? "Yıldız Avcısı" : "Star Collector",
+      name: t("mode_star_collector"),
       stats: [
-        {
-          label: lang === "tr" ? "Oynandı" : "Played",
-          value: modeStats.star_collector.played,
-        },
+        { label: playedLabel, value: modeStats.star_collector.played },
         {
           label: lang === "tr" ? "Toplam Yıldız" : "Total Stars",
           value: modeStats.star_collector.totalStars,
@@ -311,46 +381,49 @@ export function StatsScreen({ lang, playerProfile, onBack }: StatsScreenProps) {
     {
       id: "boss_battle",
       emoji: "🐉",
-      name: lang === "tr" ? "Boss Savaşı" : "Boss Battle",
+      name: t("mode_boss_battle"),
       stats: [
-        {
-          label: lang === "tr" ? "Oynandı" : "Played",
-          value: modeStats.boss_battle.played,
-        },
-        {
-          label: lang === "tr" ? "Kazanıldı" : "Won",
-          value: modeStats.boss_battle.won,
-        },
+        { label: playedLabel, value: modeStats.boss_battle.played },
+        { label: wonLabel, value: modeStats.boss_battle.won },
       ],
       color: "oklch(0.45 0.15 20)",
     },
     {
       id: "daily_tournament",
       emoji: "🏆",
-      name: lang === "tr" ? "Günlük Turnuva" : "Daily Tournament",
-      stats: [
-        {
-          label: lang === "tr" ? "Oynandı" : "Played",
-          value: modeStats.daily_tournament.played,
-        },
-      ],
+      name: t("mode_daily_tournament"),
+      stats: [{ label: playedLabel, value: modeStats.daily_tournament.played }],
       color: "oklch(0.6 0.18 80)",
     },
     {
       id: "blind",
       emoji: "👁️",
-      name: lang === "tr" ? "Kör Mod" : "Blind Mode",
+      name: t("mode_blind"),
       stats: [
-        {
-          label: lang === "tr" ? "Oynandı" : "Played",
-          value: modeStats.blind.played,
-        },
-        {
-          label: lang === "tr" ? "Kazanıldı" : "Won",
-          value: modeStats.blind.won,
-        },
+        { label: playedLabel, value: modeStats.blind.played },
+        { label: wonLabel, value: modeStats.blind.won },
       ],
       color: "oklch(0.3 0.15 275)",
+    },
+    {
+      id: "foggy",
+      emoji: "🌫️",
+      name: t("mode_foggy"),
+      stats: [
+        { label: playedLabel, value: modeStats.foggy.played },
+        { label: wonLabel, value: modeStats.foggy.won },
+      ],
+      color: "oklch(0.42 0.14 250)",
+    },
+    {
+      id: "one_error",
+      emoji: "☠️",
+      name: t("mode_one_error"),
+      stats: [
+        { label: playedLabel, value: modeStats.one_error.played },
+        { label: wonLabel, value: modeStats.one_error.won },
+      ],
+      color: "oklch(0.4 0.18 350)",
     },
   ];
 
@@ -360,7 +433,7 @@ export function StatsScreen({ lang, playerProfile, onBack }: StatsScreenProps) {
       style={{
         height: "100dvh",
         overflowY: "auto",
-        background: "oklch(var(--background))",
+        background: "transparent",
       }}
     >
       {/* Header */}
@@ -386,6 +459,54 @@ export function StatsScreen({ lang, playerProfile, onBack }: StatsScreenProps) {
         data-ocid="stats.panel"
         className="flex-1 px-6 pb-8 space-y-4 overflow-y-auto"
       >
+        {/* Time filter tabs */}
+        <div className="flex gap-2">
+          {(["today", "week", "all"] as StatsFilter[]).map((f) => {
+            const label =
+              f === "today"
+                ? t("statsFilterToday")
+                : f === "week"
+                  ? t("statsFilterWeek")
+                  : t("statsFilterAll");
+            return (
+              <button
+                key={f}
+                type="button"
+                data-ocid={`stats.filter.${f}.tab`}
+                onClick={() => setFilter(f)}
+                className="flex-1 rounded-xl py-2 text-xs font-bold transition-all"
+                style={{
+                  background:
+                    filter === f
+                      ? "oklch(var(--primary))"
+                      : "oklch(var(--card))",
+                  color:
+                    filter === f
+                      ? "oklch(var(--primary-foreground))"
+                      : "oklch(var(--muted-foreground))",
+                  border: `1.5px solid ${filter === f ? "oklch(var(--primary))" : "oklch(var(--border))"}`,
+                }}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+        {filter !== "all" && (
+          <p
+            className="text-xs text-center"
+            style={{ color: "oklch(var(--muted-foreground))" }}
+          >
+            {filter === "today"
+              ? lang === "tr"
+                ? "Bugünkü veriler gösteriliyor"
+                : "Showing today's data"
+              : lang === "tr"
+                ? "Bu haftaki veriler gösteriliyor"
+                : "Showing this week's data"}
+          </p>
+        )}
+
         {/* Overview cards */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}

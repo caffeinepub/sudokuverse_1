@@ -9,6 +9,7 @@ import {
 import { THEMES, type ThemeId } from "../themes";
 
 const THEME_KEY = "sudokuverse_theme";
+const BG_OPACITY_KEY = "sudokuverse_bg_opacity";
 
 interface ThemeContextValue {
   theme: ThemeId;
@@ -16,14 +17,18 @@ interface ThemeContextValue {
   backgroundImage: string | undefined;
   backgroundOverlay: string;
   atmosphericClass: string | undefined;
+  bgOpacity: number;
+  setBgOpacity: (val: number) => void;
 }
 
 const ThemeContext = createContext<ThemeContextValue>({
-  theme: "classic",
+  theme: "retro",
   setTheme: () => {},
   backgroundImage: undefined,
-  backgroundOverlay: "rgba(255,255,255,0.0)",
-  atmosphericClass: undefined,
+  backgroundOverlay: "rgba(0,0,20,0.45)",
+  atmosphericClass: "theme-retro-fx",
+  bgOpacity: 1,
+  setBgOpacity: () => {},
 });
 
 function applyTheme(id: ThemeId) {
@@ -59,13 +64,23 @@ function applyTheme(id: ThemeId) {
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<ThemeId>(() => {
     const stored = localStorage.getItem(THEME_KEY);
-    return (stored as ThemeId) || "classic";
+    return (stored as ThemeId) || "retro";
+  });
+
+  const [bgOpacity, setBgOpacityState] = useState<number>(() => {
+    const stored = localStorage.getItem(BG_OPACITY_KEY);
+    return stored ? Number(stored) : 1;
   });
 
   const setTheme = useCallback((id: ThemeId) => {
     setThemeState(id);
     localStorage.setItem(THEME_KEY, id);
     applyTheme(id);
+  }, []);
+
+  const setBgOpacity = useCallback((val: number) => {
+    setBgOpacityState(val);
+    localStorage.setItem(BG_OPACITY_KEY, String(val));
   }, []);
 
   // Apply on mount
@@ -85,6 +100,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         backgroundOverlay:
           currentTheme?.backgroundOverlay ?? "rgba(255,255,255,0.0)",
         atmosphericClass: currentTheme?.atmosphericClass,
+        bgOpacity,
+        setBgOpacity,
       }}
     >
       {children}

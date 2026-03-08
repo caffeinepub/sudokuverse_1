@@ -23,11 +23,16 @@ export const WeeklyChallenge = IDL.Record({
   'badgeAwarded' : IDL.Bool,
 });
 export const PlayerStats = IDL.Record({
+  'mediumCount' : IDL.Nat,
   'avgMasterTime' : IDL.Nat,
+  'masterCount' : IDL.Nat,
   'avgExpertTime' : IDL.Nat,
   'avgEasyTime' : IDL.Nat,
   'avgHardTime' : IDL.Nat,
+  'expertCount' : IDL.Nat,
+  'hardCount' : IDL.Nat,
   'avgMediumTime' : IDL.Nat,
+  'easyCount' : IDL.Nat,
 });
 export const PlayerProfile = IDL.Record({
   'xp' : IDL.Nat,
@@ -51,6 +56,7 @@ export const Difficulty = IDL.Variant({
 });
 
 export const idlService = IDL.Service({
+  'addStreakBonus' : IDL.Func([IDL.Text, IDL.Nat], [IDL.Nat], []),
   'getAllPlayerProfiles' : IDL.Func([], [IDL.Vec(PlayerProfile)], ['query']),
   'getPlayerData' : IDL.Func([IDL.Text], [PlayerProfile], ['query']),
   'initializePlayer' : IDL.Func([IDL.Text], [PlayerProfile], []),
@@ -58,6 +64,7 @@ export const idlService = IDL.Service({
       [IDL.Text, Difficulty, IDL.Nat, IDL.Nat, IDL.Nat],
       [
         IDL.Record({
+          'unlockedBadges' : IDL.Vec(IDL.Text),
           'newXp' : IDL.Nat,
           'badgeUnlocked' : IDL.Bool,
           'newRank' : IDL.Nat,
@@ -85,11 +92,16 @@ export const idlFactory = ({ IDL }) => {
     'badgeAwarded' : IDL.Bool,
   });
   const PlayerStats = IDL.Record({
+    'mediumCount' : IDL.Nat,
     'avgMasterTime' : IDL.Nat,
+    'masterCount' : IDL.Nat,
     'avgExpertTime' : IDL.Nat,
     'avgEasyTime' : IDL.Nat,
     'avgHardTime' : IDL.Nat,
+    'expertCount' : IDL.Nat,
+    'hardCount' : IDL.Nat,
     'avgMediumTime' : IDL.Nat,
+    'easyCount' : IDL.Nat,
   });
   const PlayerProfile = IDL.Record({
     'xp' : IDL.Nat,
@@ -113,6 +125,7 @@ export const idlFactory = ({ IDL }) => {
   });
   
   return IDL.Service({
+    'addStreakBonus' : IDL.Func([IDL.Text, IDL.Nat], [IDL.Nat], []),
     'getAllPlayerProfiles' : IDL.Func([], [IDL.Vec(PlayerProfile)], ['query']),
     'getPlayerData' : IDL.Func([IDL.Text], [PlayerProfile], ['query']),
     'initializePlayer' : IDL.Func([IDL.Text], [PlayerProfile], []),
@@ -120,6 +133,7 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Text, Difficulty, IDL.Nat, IDL.Nat, IDL.Nat],
         [
           IDL.Record({
+            'unlockedBadges' : IDL.Vec(IDL.Text),
             'newXp' : IDL.Nat,
             'badgeUnlocked' : IDL.Bool,
             'newRank' : IDL.Nat,

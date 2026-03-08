@@ -15,7 +15,51 @@ export type FrontendTaskType =
   | "speed_solve"
   | "use_notes_mode"
   | "solve_medium_plus"
-  | "chain_two";
+  | "chain_two"
+  | "play_boss_battle"
+  | "play_survival"
+  | "play_blind_mode"
+  | "play_star_collector"
+  | "solve_five_puzzles"
+  | "solve_expert_puzzle";
+
+// ---- All possible daily task types (pool to rotate from) ----
+const ALL_DAILY_TASK_POOL: FrontendTaskType[] = [
+  "solve_two_puzzles",
+  "solve_no_hints",
+  "solve_under_time",
+  "solve_three_puzzles",
+  "solve_hard_puzzle",
+  "no_errors_puzzle",
+  "speed_solve",
+  "use_notes_mode",
+  "solve_medium_plus",
+  "chain_two",
+  "play_boss_battle",
+  "play_survival",
+  "play_blind_mode",
+  "play_star_collector",
+  "solve_five_puzzles",
+  "solve_expert_puzzle",
+];
+
+/** Deterministic daily task selection based on date seed */
+export function getDailyTasksForToday(): FrontendTaskType[] {
+  const today = todayKey();
+  // Simple numeric hash from date string
+  let hash = 0;
+  for (let i = 0; i < today.length; i++) {
+    hash = (hash * 31 + today.charCodeAt(i)) >>> 0;
+  }
+  // Fisher-Yates shuffle using hash as seed
+  const pool = [...ALL_DAILY_TASK_POOL];
+  for (let i = pool.length - 1; i > 0; i--) {
+    hash = (hash * 1664525 + 1013904223) >>> 0;
+    const j = hash % (i + 1);
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return pool.slice(0, 10);
+}
 
 export type WeeklyTaskIndex = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
@@ -26,6 +70,8 @@ const SOLVE_COUNT_KEY = "sudokuverse_daily_solve_count_v2";
 const WEEKLY_SOLVE_COUNT_KEY = "sudokuverse_weekly_solve_count_v2";
 const WEEKLY_HARD_SOLVE_COUNT_KEY = "sudokuverse_weekly_hard_solves_v2";
 const WEEKLY_DIFFICULTIES_KEY = "sudokuverse_weekly_difficulties_v2";
+// Dedicated counter for expert-level error-free solves (used by weekly_task_6)
+const WEEKLY_EXPERT_ERRORLESS_KEY = "sudokuverse_weekly_expert_errorless_v1";
 
 // ---- Helpers ----
 function todayKey(): string {
@@ -181,6 +227,34 @@ function addWeeklyDifficulty(diff: string): string[] {
   return diffs;
 }
 
+// ---- Weekly expert-errorless counter (for weekly_task_6) ----
+function getWeeklyExpertErrorless(): number {
+  try {
+    const raw = localStorage.getItem(WEEKLY_EXPERT_ERRORLESS_KEY);
+    if (raw) {
+      const p = JSON.parse(raw) as { weekKey: string; count: number };
+      if (p.weekKey === isoWeekKey()) return p.count;
+    }
+  } catch (_) {
+    /* ignore */
+  }
+  return 0;
+}
+
+function incrementWeeklyExpertErrorless(): number {
+  const count = getWeeklyExpertErrorless() + 1;
+  localStorage.setItem(
+    WEEKLY_EXPERT_ERRORLESS_KEY,
+    JSON.stringify({ weekKey: isoWeekKey(), count }),
+  );
+  return count;
+}
+
+/** Exported reader for HomeScreen weekly progress display */
+export function getWeeklyExpertErrorlessCount(): number {
+  return getWeeklyExpertErrorless();
+}
+
 // ---- Hook ----
 export function useDailyTasks() {
   const [dailyData, setDailyData] = useState<DailyStorage>(loadDaily);
@@ -220,18 +294,7 @@ export function useDailyTasks() {
       setNewlyCompletedTasks((prevNew) => [...prevNew, taskType]);
 
       // Check if all 10 tasks are now done → mark weekly_task_3
-      const allTaskTypes: FrontendTaskType[] = [
-        "solve_two_puzzles",
-        "solve_no_hints",
-        "solve_under_time",
-        "solve_three_puzzles",
-        "solve_hard_puzzle",
-        "no_errors_puzzle",
-        "speed_solve",
-        "use_notes_mode",
-        "solve_medium_plus",
-        "chain_two",
-      ];
+      const allTaskTypes: FrontendTaskType[] = getDailyTasksForToday();
       const allDone = allTaskTypes.every((t) => next.tasks[t]);
       if (allDone) {
         setWeeklyData((prevW) => {
@@ -297,19 +360,37 @@ export function useDailyTasks() {
       const weeklyCount = incrementWeeklySolveCount();
       const weeklyDiffs = addWeeklyDifficulty(difficulty);
       if (isHardPlus) incrementWeeklyHardSolves();
+      // Track expert-errorless separately for weekly_task_6
+      const isExpertErrorless = isExpert && errors === 0;
+      if (isExpertErrorless) incrementWeeklyExpertErrorless();
+
+      const isExpertPlus = ["expert", "master"].includes(difficulty);
+      const todayTasks = getDailyTasksForToday();
+
+      // Only mark tasks that are actually in today's rotation
+      const markIfInRotation = (taskType: FrontendTaskType) => {
+        if (todayTasks.includes(taskType)) markTaskComplete(taskType);
+      };
 
       // --- Daily tasks ---
-      if (dailyCount >= 2) markTaskComplete("solve_two_puzzles");
-      if (dailyCount >= 3) markTaskComplete("solve_three_puzzles");
-      if (hintsUsed === 0) markTaskComplete("solve_no_hints");
-      if (solveTimeSeconds <= 180) markTaskComplete("solve_under_time"); // 3 min
-      if (isHardPlus) markTaskComplete("solve_hard_puzzle");
-      if (errors === 0) markTaskComplete("no_errors_puzzle");
-      if (solveTimeSeconds <= 300) markTaskComplete("speed_solve"); // 5 min
-      if (isNotesModeUsed) markTaskComplete("use_notes_mode");
-      if (isMediumPlus) markTaskComplete("solve_medium_plus");
+      if (dailyCount >= 2) markIfInRotation("solve_two_puzzles");
+      if (dailyCount >= 3) markIfInRotation("solve_three_puzzles");
+      if (dailyCount >= 5) markIfInRotation("solve_five_puzzles");
+      if (hintsUsed === 0) markIfInRotation("solve_no_hints");
+      if (solveTimeSeconds <= 180) markIfInRotation("solve_under_time"); // 3 min
+      if (isHardPlus) markIfInRotation("solve_hard_puzzle");
+      if (errors === 0) markIfInRotation("no_errors_puzzle");
+      if (solveTimeSeconds <= 300) markIfInRotation("speed_solve"); // 5 min
+      if (isNotesModeUsed) markIfInRotation("use_notes_mode");
+      if (isMediumPlus) markIfInRotation("solve_medium_plus");
+      if (isExpertPlus) markIfInRotation("solve_expert_puzzle");
       if (gameMode === "chain" && chainCount >= 2)
-        markTaskComplete("chain_two");
+        markIfInRotation("chain_two");
+      if (gameMode === "boss_battle") markIfInRotation("play_boss_battle");
+      if (gameMode === "survival") markIfInRotation("play_survival");
+      if (gameMode === "blind") markIfInRotation("play_blind_mode");
+      if (gameMode === "star_collector")
+        markIfInRotation("play_star_collector");
 
       // --- Weekly challenges ---
       // weekly_task_1: solved >= 7 puzzles this week
@@ -327,8 +408,9 @@ export function useDailyTasks() {
       // weekly_task_5: chain >= 5
       if (gameMode === "chain" && chainCount >= 5) markWeeklyTaskComplete(4);
 
-      // weekly_task_6: expert with 0 errors
-      if (isExpert && errors === 0) markWeeklyTaskComplete(5);
+      // weekly_task_6: expert with 0 errors (use dedicated counter)
+      const weeklyExpertErrorless = getWeeklyExpertErrorless();
+      if (weeklyExpertErrorless >= 1) markWeeklyTaskComplete(5);
 
       // weekly_task_7: 3 different difficulties this week
       if (weeklyDiffs.length >= 3) markWeeklyTaskComplete(6);

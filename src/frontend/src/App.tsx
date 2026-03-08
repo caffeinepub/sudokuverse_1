@@ -6,22 +6,32 @@ import { BadgesScreen } from "./components/BadgesScreen";
 import { GameScreen } from "./components/GameScreen";
 import { HomeScreen } from "./components/HomeScreen";
 import { ModeHubScreen } from "./components/ModeHubScreen";
+import { ProfileScreen } from "./components/ProfileScreen";
 import { SettingsScreen } from "./components/SettingsScreen";
 import { StatsScreen } from "./components/StatsScreen";
 import { ThemePicker } from "./components/ThemePicker";
+import { TutorialOverlay } from "./components/TutorialOverlay";
 import { SoundProvider, useSound } from "./context/SoundContext";
 import { ThemeProvider, useTheme } from "./context/ThemeContext";
 import { usePlayerData } from "./hooks/usePlayerData";
-import type { Lang } from "./i18n";
+import { LANGUAGES, type Lang } from "./i18n";
 import type { GameMode } from "./types/gameMode";
 
 const LANG_KEY = "sudokuverse_lang";
 
-type Screen = "home" | "modeHub" | "game" | "stats" | "badges" | "settings";
+type Screen =
+  | "home"
+  | "modeHub"
+  | "game"
+  | "stats"
+  | "badges"
+  | "settings"
+  | "profile";
 
 /** Full-screen atmospheric background layer */
 function AtmosphericBackground() {
-  const { backgroundImage, backgroundOverlay, atmosphericClass } = useTheme();
+  const { backgroundImage, backgroundOverlay, atmosphericClass, bgOpacity } =
+    useTheme();
 
   return (
     <>
@@ -35,7 +45,7 @@ function AtmosphericBackground() {
           <motion.div
             key={backgroundImage}
             initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
+            animate={{ opacity: bgOpacity }}
             transition={{ duration: 0.6, ease: "easeInOut" }}
             className="absolute inset-0"
             style={{
@@ -73,6 +83,7 @@ function AtmosphericBackground() {
 
 function AppInner() {
   const [screen, setScreen] = useState<Screen>("home");
+  const [gameKey, setGameKey] = useState(0);
   const [selectedDifficulty, setSelectedDifficulty] = useState<Difficulty>(
     Difficulty.easy,
   );
@@ -89,6 +100,10 @@ function AppInner() {
 
   useEffect(() => {
     localStorage.setItem(LANG_KEY, lang);
+    // Apply RTL/LTR direction based on language
+    const langDef = LANGUAGES.find((l) => l.code === lang);
+    document.documentElement.dir = langDef?.rtl ? "rtl" : "ltr";
+    document.documentElement.lang = lang;
   }, [lang]);
 
   // Start theme music when theme changes (and music is enabled)
@@ -106,12 +121,21 @@ function AppInner() {
     setScreen("game");
   };
 
-  const handleNavigate = (target: "stats" | "badges" | "settings") => {
+  const handleNavigate = (
+    target: "stats" | "badges" | "settings" | "profile",
+  ) => {
     setScreen(target);
   };
 
   const handleBack = () => setScreen("home");
   const handleModeHubBack = () => setScreen("home");
+
+  // "Play Again" restarts the same mode/difficulty without going to modeHub.
+  // Increment gameKey to force GameScreen remount without a setTimeout/flicker.
+  const handlePlayAgain = () => {
+    setScreen("game");
+    setGameKey((k) => k + 1);
+  };
 
   const handleOpenSettings = () => setScreen("settings");
 
@@ -141,6 +165,9 @@ function AppInner() {
         open={themePickerOpen}
         onOpenChange={setThemePickerOpen}
       />
+
+      {/* Tutorial overlay for first-time players */}
+      <TutorialOverlay lang={lang} />
 
       <AnimatePresence mode="wait">
         {screen === "home" && (
@@ -178,7 +205,7 @@ function AppInner() {
 
         {screen === "game" && (
           <motion.div
-            key="game"
+            key={`game-${gameKey}`}
             {...pageVariants}
             transition={{ duration: 0.2 }}
           >
@@ -187,7 +214,8 @@ function AppInner() {
               gameMode={gameMode}
               lang={lang}
               onBack={handleBack}
-              onPlayAgain={() => setScreen("modeHub")}
+              onPlayAgain={handlePlayAgain}
+              onOpenModes={handleOpenModes}
             />
           </motion.div>
         )}
@@ -230,6 +258,21 @@ function AppInner() {
               lang={lang}
               onLangChange={setLang}
               onBack={handleBack}
+            />
+          </motion.div>
+        )}
+
+        {screen === "profile" && (
+          <motion.div
+            key="profile"
+            {...pageVariants}
+            transition={{ duration: 0.2 }}
+          >
+            <ProfileScreen
+              lang={lang}
+              playerProfile={playerProfile ?? null}
+              onBack={handleBack}
+              onNavigate={(s) => setScreen(s)}
             />
           </motion.div>
         )}

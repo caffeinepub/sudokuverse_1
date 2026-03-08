@@ -6,4 +6,6 @@ export type GameMode =
   | "chain"
   | "blind"
   | "star_collector"
-  | "boss_battle";
+  | "boss_battle"
+  | "foggy"
+  | "one_error";

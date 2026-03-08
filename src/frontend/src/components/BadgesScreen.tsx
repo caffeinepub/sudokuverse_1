@@ -1,7 +1,48 @@
 import { motion } from "motion/react";
-import React from "react";
+import React, { useState } from "react";
 import type { PlayerProfile } from "../backend.d";
 import { type Lang, useTranslation } from "../i18n";
+
+const BADGE_DATES_KEY = "sudokuverse_badge_dates_v1";
+
+/** Check if a badge has been unlocked locally */
+export function isBadgeLocallyUnlocked(badgeId: string): boolean {
+  try {
+    const stored = localStorage.getItem(BADGE_DATES_KEY);
+    if (stored) {
+      const dates = JSON.parse(stored) as Record<string, string>;
+      return !!dates[badgeId];
+    }
+  } catch (_) {
+    /* ignore */
+  }
+  return false;
+}
+
+/** Record the date a badge was unlocked */
+export function recordBadgeUnlockDate(badgeId: string): void {
+  try {
+    const stored = localStorage.getItem(BADGE_DATES_KEY);
+    const dates: Record<string, string> = stored
+      ? (JSON.parse(stored) as Record<string, string>)
+      : {};
+    if (!dates[badgeId]) {
+      dates[badgeId] = new Date().toISOString().split("T")[0];
+      localStorage.setItem(BADGE_DATES_KEY, JSON.stringify(dates));
+    }
+  } catch (_) {
+    /* ignore */
+  }
+}
+
+function getBadgeDates(): Record<string, string> {
+  try {
+    const stored = localStorage.getItem(BADGE_DATES_KEY);
+    return stored ? (JSON.parse(stored) as Record<string, string>) : {};
+  } catch (_) {
+    return {};
+  }
+}
 
 interface BadgesScreenProps {
   lang: Lang;
@@ -102,6 +143,8 @@ const ALL_BADGES = [
   },
 ];
 
+type BadgeFilter = "all" | "unlocked" | "locked";
+
 export function BadgesScreen({
   lang,
   playerProfile,
@@ -110,6 +153,21 @@ export function BadgesScreen({
   const t = useTranslation(lang);
   const unlockedBadges = new Set(playerProfile?.badges ?? []);
   const unlockedCount = unlockedBadges.size;
+  const badgeDates = getBadgeDates();
+  const [badgeFilter, setBadgeFilter] = useState<BadgeFilter>("all");
+
+  const filterLabels: Record<BadgeFilter, string> = {
+    all: lang === "tr" ? "Tümü" : "All",
+    unlocked: lang === "tr" ? "Açık" : "Unlocked",
+    locked: lang === "tr" ? "Kilitli" : "Locked",
+  };
+
+  const filteredBadges = ALL_BADGES.filter(({ id }) => {
+    const isUnlocked = unlockedBadges.has(id);
+    if (badgeFilter === "unlocked") return isUnlocked;
+    if (badgeFilter === "locked") return !isUnlocked;
+    return true;
+  });
 
   return (
     <div
@@ -117,7 +175,7 @@ export function BadgesScreen({
       style={{
         height: "100dvh",
         overflowY: "auto",
-        background: "oklch(var(--background))",
+        background: "transparent",
       }}
     >
       {/* Header */}
@@ -140,7 +198,7 @@ export function BadgesScreen({
       </header>
 
       {/* Progress bar */}
-      <div className="px-6 mb-4">
+      <div className="px-6 mb-3">
         <div className="flex justify-between text-sm mb-1.5">
           <span style={{ color: "oklch(var(--muted-foreground))" }}>
             {unlockedCount}/{ALL_BADGES.length} {t("unlocked")}
@@ -167,12 +225,50 @@ export function BadgesScreen({
         </div>
       </div>
 
+      {/* Filter tabs */}
+      <div className="px-6 mb-3">
+        <div
+          className="flex rounded-2xl p-1 gap-1"
+          style={{ background: "oklch(var(--muted))" }}
+        >
+          {(["all", "unlocked", "locked"] as BadgeFilter[]).map((filter) => (
+            <button
+              key={filter}
+              type="button"
+              data-ocid="badges.filter.tab"
+              onClick={() => setBadgeFilter(filter)}
+              className="flex-1 rounded-xl py-1.5 text-xs font-bold transition-all"
+              style={{
+                background:
+                  badgeFilter === filter
+                    ? "oklch(var(--primary))"
+                    : "transparent",
+                color:
+                  badgeFilter === filter
+                    ? "oklch(var(--primary-foreground))"
+                    : "oklch(var(--muted-foreground))",
+              }}
+            >
+              {filterLabels[filter]}
+              {filter === "unlocked" && (
+                <span className="ml-1 opacity-70">({unlockedCount})</span>
+              )}
+              {filter === "locked" && (
+                <span className="ml-1 opacity-70">
+                  ({ALL_BADGES.length - unlockedCount})
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <main
         data-ocid="badges.panel"
         className="flex-1 px-6 pb-8 overflow-y-auto"
       >
         <div className="grid grid-cols-2 gap-3">
-          {ALL_BADGES.map(({ id, emoji, color }, i) => {
+          {filteredBadges.map(({ id, emoji, color }, i) => {
             const isUnlocked = unlockedBadges.has(id);
             const nameKey = `badge_${id}` as Parameters<typeof t>[0];
             const descKey = `badge_${id}_desc` as Parameters<typeof t>[0];
@@ -212,19 +308,75 @@ export function BadgesScreen({
                   {t(descKey)}
                 </div>
                 {isUnlocked && (
-                  <div
-                    className="mt-2 text-xs font-bold flex items-center gap-1"
-                    style={{ color }}
-                  >
-                    ✅ {t("unlocked")}
+                  <div className="mt-2">
+                    <div
+                      className="text-xs font-bold flex items-center gap-1"
+                      style={{ color }}
+                    >
+                      ✅ {t("unlocked")}
+                    </div>
+                    {badgeDates[id] && (
+                      <div
+                        className="text-xs mt-0.5 opacity-70"
+                        style={{ color: "oklch(var(--muted-foreground))" }}
+                      >
+                        📅{" "}
+                        {new Date(badgeDates[id]).toLocaleDateString(
+                          lang === "tr"
+                            ? "tr-TR"
+                            : lang === "de"
+                              ? "de-DE"
+                              : lang === "fr"
+                                ? "fr-FR"
+                                : lang === "es"
+                                  ? "es-ES"
+                                  : lang === "it"
+                                    ? "it-IT"
+                                    : lang === "pt"
+                                      ? "pt-BR"
+                                      : lang === "ru"
+                                        ? "ru-RU"
+                                        : lang === "ja"
+                                          ? "ja-JP"
+                                          : lang === "ko"
+                                            ? "ko-KR"
+                                            : lang === "zh"
+                                              ? "zh-CN"
+                                              : lang === "ar"
+                                                ? "ar-SA"
+                                                : lang === "hi"
+                                                  ? "hi-IN"
+                                                  : "en-US",
+                          { day: "numeric", month: "short", year: "numeric" },
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
                 {!isUnlocked && (
                   <div
-                    className="mt-2 text-xs flex items-center gap-1"
-                    style={{ color: "oklch(var(--muted-foreground))" }}
+                    className="mt-2 rounded-lg px-2 py-1.5"
+                    style={{
+                      background: "oklch(var(--secondary))",
+                      border: "1px dashed oklch(var(--border))",
+                    }}
                   >
-                    🔒 {t("locked")}
+                    <div
+                      className="text-xs font-bold mb-0.5 flex items-center gap-1"
+                      style={{ color: "oklch(var(--muted-foreground))" }}
+                    >
+                      🔒 {t("locked")}
+                    </div>
+                    <div
+                      className="text-xs leading-tight"
+                      style={{
+                        color: "oklch(var(--muted-foreground))",
+                        opacity: 0.8,
+                      }}
+                    >
+                      {lang === "tr" ? "Nasıl açılır: " : "How to unlock: "}
+                      {t(descKey)}
+                    </div>
                   </div>
                 )}
               </motion.div>

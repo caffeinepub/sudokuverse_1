@@ -36,11 +36,16 @@ export interface PlayerProfile {
   'hintsUsed' : bigint,
 }
 export interface PlayerStats {
+  'mediumCount' : bigint,
   'avgMasterTime' : bigint,
+  'masterCount' : bigint,
   'avgExpertTime' : bigint,
   'avgEasyTime' : bigint,
   'avgHardTime' : bigint,
+  'expertCount' : bigint,
+  'hardCount' : bigint,
   'avgMediumTime' : bigint,
+  'easyCount' : bigint,
 }
 export interface WeeklyChallenge {
   'puzzlesCompleted' : bigint,
@@ -48,12 +53,18 @@ export interface WeeklyChallenge {
   'badgeAwarded' : boolean,
 }
 export interface _SERVICE {
+  'addStreakBonus' : ActorMethod<[string, bigint], bigint>,
   'getAllPlayerProfiles' : ActorMethod<[], Array<PlayerProfile>>,
   'getPlayerData' : ActorMethod<[string], PlayerProfile>,
   'initializePlayer' : ActorMethod<[string], PlayerProfile>,
   'recordPuzzleSolve' : ActorMethod<
     [string, Difficulty, bigint, bigint, bigint],
-    { 'newXp' : bigint, 'badgeUnlocked' : boolean, 'newRank' : bigint }
+    {
+      'unlockedBadges' : Array<string>,
+      'newXp' : bigint,
+      'badgeUnlocked' : boolean,
+      'newRank' : bigint,
+    }
   >,
 }
 export declare const idlService: IDL.ServiceClass;

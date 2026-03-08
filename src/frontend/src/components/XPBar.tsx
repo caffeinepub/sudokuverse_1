@@ -49,7 +49,7 @@ interface XPBarProps {
 }
 
 export function XPBar({ xp, lang }: XPBarProps) {
-  const t = useTranslation(lang);
+  const _t = useTranslation(lang);
   const xpNum = typeof xp === "bigint" ? Number(xp) : xp;
   const { rankName, nextRankName, progress, xpToNext, isMax } = getRankInfo(
     xpNum,
@@ -58,22 +58,33 @@ export function XPBar({ xp, lang }: XPBarProps) {
 
   return (
     <div className="w-full space-y-1">
-      <div className="flex items-center justify-between text-sm">
+      <div className="flex items-center justify-between">
         <span
-          className="font-semibold font-display"
-          style={{ color: "oklch(0.52 0.24 292)" }}
+          className="font-semibold font-display text-sm"
+          style={{ color: "oklch(var(--primary))" }}
         >
           {rankName}
         </span>
         {!isMax && (
-          <span className="text-xs" style={{ color: "oklch(0.52 0.04 250)" }}>
-            {xpToNext} {t("xpToGo")} → {nextRankName}
+          <span
+            className="text-xs font-bold px-2 py-0.5 rounded-full"
+            style={{
+              background: "oklch(var(--primary) / 0.12)",
+              color: "oklch(var(--primary))",
+              border: "1px solid oklch(var(--primary) / 0.25)",
+            }}
+          >
+            {xpToNext.toLocaleString()} XP → {nextRankName}
           </span>
         )}
         {isMax && (
           <span
-            className="text-xs font-bold"
-            style={{ color: "oklch(0.72 0.19 52)" }}
+            className="text-xs font-bold px-2 py-0.5 rounded-full"
+            style={{
+              background: "oklch(0.72 0.19 52 / 0.15)",
+              color: "oklch(0.72 0.19 52)",
+              border: "1px solid oklch(0.72 0.19 52 / 0.3)",
+            }}
           >
             MAX ✨
           </span>
@@ -81,7 +92,7 @@ export function XPBar({ xp, lang }: XPBarProps) {
       </div>
       <div
         className="h-3 rounded-full overflow-hidden"
-        style={{ background: "oklch(0.93 0.04 280)" }}
+        style={{ background: "oklch(var(--muted))" }}
       >
         <div
           className="h-full rounded-full xp-bar-fill transition-all duration-1000"
@@ -90,7 +101,7 @@ export function XPBar({ xp, lang }: XPBarProps) {
       </div>
       <div
         className="text-xs text-right"
-        style={{ color: "oklch(0.52 0.04 250)" }}
+        style={{ color: "oklch(var(--muted-foreground))" }}
       >
         {xpNum.toLocaleString()} XP
       </div>

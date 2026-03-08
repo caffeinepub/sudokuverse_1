@@ -17,11 +17,16 @@ export interface DailyTask {
     taskType: DailyTaskType;
 }
 export interface PlayerStats {
+    mediumCount: bigint;
     avgMasterTime: bigint;
+    masterCount: bigint;
     avgExpertTime: bigint;
     avgEasyTime: bigint;
     avgHardTime: bigint;
+    expertCount: bigint;
+    hardCount: bigint;
     avgMediumTime: bigint;
+    easyCount: bigint;
 }
 export interface PlayerProfile {
     xp: bigint;
@@ -49,10 +54,12 @@ export enum Difficulty {
     medium = "medium"
 }
 export interface backendInterface {
+    addStreakBonus(uuid: string, bonusXp: bigint): Promise<bigint>;
     getAllPlayerProfiles(): Promise<Array<PlayerProfile>>;
     getPlayerData(uuid: string): Promise<PlayerProfile>;
     initializePlayer(uuid: string): Promise<PlayerProfile>;
     recordPuzzleSolve(uuid: string, difficulty: Difficulty, solveTime: bigint, hintsUsed: bigint, errorsMade: bigint): Promise<{
+        unlockedBadges: Array<string>;
         newXp: bigint;
         badgeUnlocked: boolean;
         newRank: bigint;

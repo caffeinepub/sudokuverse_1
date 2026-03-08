@@ -6,7 +6,7 @@ import { useSound } from "../context/SoundContext";
 import { useDailyTasks } from "../hooks/useDailyTasks";
 import { useLevelSystem } from "../hooks/useLevelSystem";
 import { useModeStats } from "../hooks/useModeStats";
-import { useRecordPuzzleSolve } from "../hooks/usePlayerData";
+import { usePlayerData, useRecordPuzzleSolve } from "../hooks/usePlayerData";
 import { type Lang, useTranslation } from "../i18n";
 import {
   type Grid,
@@ -16,6 +16,7 @@ import {
   isPuzzleComplete,
 } from "../sudokuEngine";
 import type { GameMode } from "../types/gameMode";
+import { isBadgeLocallyUnlocked, recordBadgeUnlockDate } from "./BadgesScreen";
 import { SudokuBoard } from "./SudokuBoard";
 import { getRankInfo } from "./XPBar";
 
@@ -68,6 +69,7 @@ interface GameScreenProps {
   lang: Lang;
   onBack: () => void;
   onPlayAgain?: () => void;
+  onOpenModes?: () => void;
 }
 
 function formatTime(seconds: number): string {
@@ -188,6 +190,68 @@ const CONFETTI_PIECES = Array.from({ length: 40 }, (_, i) => ({
   rotation: (i * 137) % 360,
 }));
 
+// ---- Share Result helper ----
+function buildShareText(
+  gameMode: string,
+  errorCount: number,
+  hintsUsed: number,
+  time: number,
+  xp: number,
+  lang: string,
+): string {
+  const m = Math.floor(time / 60);
+  const s = time % 60;
+  const timeStr = `${m}:${s.toString().padStart(2, "0")}`;
+  const appUrl = window.location.href.split("?")[0];
+  if (lang === "tr") {
+    return `🎮 SudokuVerse — ${gameMode}\n⏱ Süre: ${timeStr}\n❌ Hata: ${errorCount}\n💡 İpucu: ${hintsUsed}\n⭐ XP: +${xp}\n\nBen de oyna: ${appUrl}`;
+  }
+  return `🎮 SudokuVerse — ${gameMode}\n⏱ Time: ${timeStr}\n❌ Errors: ${errorCount}\n💡 Hints: ${hintsUsed}\n⭐ XP: +${xp}\n\nPlay too: ${appUrl}`;
+}
+
+// ---- Foggy Mode helpers ----
+function initFogRevealedCells(originalPuzzle: Grid): Set<string> {
+  const revealed = new Set<string>();
+  // Reveal all given cells and their immediate neighbors
+  for (let r = 0; r < 9; r++) {
+    for (let c = 0; c < 9; c++) {
+      if (originalPuzzle[r][c] !== 0) {
+        revealed.add(`${r}-${c}`);
+        // Reveal orthogonal neighbors
+        for (const [dr, dc] of [
+          [-1, 0],
+          [1, 0],
+          [0, -1],
+          [0, 1],
+        ]) {
+          const nr = r + dr;
+          const nc = c + dc;
+          if (nr >= 0 && nr < 9 && nc >= 0 && nc < 9) {
+            revealed.add(`${nr}-${nc}`);
+          }
+        }
+      }
+    }
+  }
+  return revealed;
+}
+
+function expandFog(
+  revealed: Set<string>,
+  row: number,
+  col: number,
+): Set<string> {
+  const next = new Set(revealed);
+  // Reveal all cells in same row, column, and 3x3 box
+  for (let c = 0; c < 9; c++) next.add(`${row}-${c}`);
+  for (let r = 0; r < 9; r++) next.add(`${r}-${col}`);
+  const boxR = Math.floor(row / 3) * 3;
+  const boxC = Math.floor(col / 3) * 3;
+  for (let r = boxR; r < boxR + 3; r++)
+    for (let c = boxC; c < boxC + 3; c++) next.add(`${r}-${c}`);
+  return next;
+}
+
 // ---- Boss Battle helpers ----
 function countEmptyCells(puzzle: Grid): number {
   let count = 0;
@@ -218,14 +282,19 @@ export function GameScreen({
   lang,
   onBack,
   onPlayAgain,
+  onOpenModes,
 }: GameScreenProps) {
   const t = useTranslation(lang);
   const recordSolve = useRecordPuzzleSolve();
+  const { data: playerProfile } = usePlayerData();
   const { playSound } = useSound();
   const { onPuzzleSolved, newlyCompletedTasks, clearNewlyCompleted } =
     useDailyTasks();
   const { recordModeResult } = useModeStats();
-  const { advanceLevel } = useLevelSystem();
+  const { advanceLevel, currentLevel } = useLevelSystem();
+
+  // Hints based on player level: base 3 + 1 for every 10 levels
+  const maxHints = 3 + Math.floor((currentLevel - 1) / 10);
 
   // Track if note mode was used this game
   const noteModeUsedRef = useRef(false);
@@ -267,7 +336,7 @@ export function GameScreen({
   const [errorCells, setErrorCells] = useState<Set<string>>(new Set());
   const [hintCells, setHintCells] = useState<Set<string>>(new Set());
   const [isNoteMode, setIsNoteMode] = useState(false);
-  const [hintsLeft, setHintsLeft] = useState(3);
+  const [hintsLeft, setHintsLeft] = useState(() => maxHints);
   const [errorCount, setErrorCount] = useState(0);
   const [hintsUsed, setHintsUsed] = useState(0);
   const [timer, setTimer] = useState(0);
@@ -294,6 +363,8 @@ export function GameScreen({
   const [chainFlash, setChainFlash] = useState(false);
   const [showChainSummary, setShowChainSummary] = useState(false);
   const [chainTotalXP, setChainTotalXP] = useState(0);
+  const [chainTotalTime, setChainTotalTime] = useState(0);
+  const [chainTotalErrors, setChainTotalErrors] = useState(0);
 
   // --- Blind ---
   const [blindCountdown, setBlindCountdown] = useState<number | null>(null);
@@ -313,10 +384,30 @@ export function GameScreen({
 
   // --- Blind Mode completion ---
   const [showBlindComplete, setShowBlindComplete] = useState(false);
+  // --- Blind Mode "Play Again" countdown (re-show memorisation window) ---
+  const [blindPlayAgainCountdown, setBlindPlayAgainCountdown] = useState<
+    number | null
+  >(null);
+
+  // --- Foggy Mode ---
+  const [fogRevealed, setFogRevealed] = useState<Set<string>>(new Set());
+
+  // --- One Error Mode ---
+  const [showOneErrorGameOver, setShowOneErrorGameOver] = useState(false);
+  const [showOneErrorComplete, setShowOneErrorComplete] = useState(false);
 
   // --- Daily Tournament ---
   const [tournamentScore, setTournamentScore] = useState(0);
   const [alreadyPlayed, setAlreadyPlayed] = useState(false);
+
+  // --- Chain Auto-Advance ---
+  const [chainAutoAdvanceCountdown, setChainAutoAdvanceCountdown] = useState<
+    number | null
+  >(null);
+
+  // --- Speed Rush Combo Burst ---
+  const [showComboBurst, setShowComboBurst] = useState(false);
+  const [comboBurstValue, setComboBurstValue] = useState(0);
 
   // --- New Features ---
   // Undo history
@@ -400,6 +491,11 @@ export function GameScreen({
         setBlindCountdown(5);
       }
 
+      // Foggy Mode: initialize revealed cells
+      if (gameMode === "foggy") {
+        setFogRevealed(initFogRevealedCells(p));
+      }
+
       setIsLoading(false);
     }, 100);
 
@@ -430,6 +526,43 @@ export function GameScreen({
     return () => clearTimeout(id);
   }, [blindCountdown, originalPuzzle, difficulty]);
 
+  // Blind Mode "Play Again" countdown: show a new puzzle with memorisation window
+  useEffect(() => {
+    if (blindPlayAgainCountdown === null) return;
+    if (blindPlayAgainCountdown <= 0) {
+      setBlindPlayAgainCountdown(null);
+      // Actually restart: reset state and load new puzzle
+      setShowBlindComplete(false);
+      setIsComplete(false);
+      setErrorCount(0);
+      setHintsUsed(0);
+      setHintsLeft(maxHints);
+      setTimer(0);
+      setErrorCells(new Set());
+      setNotes(new Map());
+      setHintCells(new Set());
+      setIsNoteMode(false);
+      setMoveHistory([]);
+      noteModeUsedRef.current = false;
+      setIsBlind(false);
+      setBlindHidden(new Set());
+      setIsLoading(true);
+      setTimeout(() => {
+        const { puzzle: p, solution: s } = generatePuzzle(effectiveDifficulty);
+        setPuzzle(p);
+        setSolution(s);
+        setOriginalPuzzle(p.map((row) => [...row]));
+        setBlindCountdown(5); // restart memorisation countdown
+        setIsLoading(false);
+      }, 100);
+      return;
+    }
+    const id = setTimeout(() => {
+      setBlindPlayAgainCountdown((c) => (c !== null ? c - 1 : null));
+    }, 1000);
+    return () => clearTimeout(id);
+  }, [blindPlayAgainCountdown, effectiveDifficulty, maxHints]);
+
   // Speed Rush timer
   useEffect(() => {
     if (gameMode !== "speed_rush") return;
@@ -438,12 +571,13 @@ export function GameScreen({
       setSpeedTimeLeft((prev) => {
         if (prev <= 1) {
           clearInterval(id);
-          // Record speed_rush as played (not won since timer ran out)
+          // Time's up without completing the puzzle: record as a loss, no XP
           recordModeResultRef.current({
             gameMode: "speed_rush",
             won: false,
             combo: comboRef.current,
           });
+          // Do NOT call handleComplete here -- puzzle was not finished
           setShowTimeUp(true);
           return 0;
         }
@@ -467,8 +601,10 @@ export function GameScreen({
   }, [gameMode, isLoading, isPaused, isComplete]);
 
   const handleComplete = useCallback(
-    (finalPuzzle: Grid, currentXP = 0) => {
+    (finalPuzzle: Grid, _currentXP = 0) => {
       void finalPuzzle;
+      // Use real cumulative XP from playerProfile for rank-up detection
+      const realCurrentXP = Number(playerProfile?.xp ?? 0);
       setIsComplete(true);
       if (timerRef.current) clearInterval(timerRef.current);
 
@@ -491,6 +627,8 @@ export function GameScreen({
                 : 2;
         xp = Math.round(xp * chainMult);
         setChainTotalXP((prev) => prev + xp);
+        setChainTotalTime((prev) => prev + elapsed);
+        setChainTotalErrors((prev) => prev + errorCount);
         saveChainRecord(chainCount);
       }
       if (gameMode === "daily_tournament") {
@@ -531,8 +669,9 @@ export function GameScreen({
       }
       if (gameMode === "boss_battle") {
         playSound("boss_defeated");
-        // Show boss defeated with particle explosion after 800ms
-        setTimeout(() => setShowBossDefeated(true), 800);
+        // Show boss defeated with particle explosion after 1500ms
+        // (allows the HP bar spring animation to fully complete before the modal appears)
+        setTimeout(() => setShowBossDefeated(true), 1500);
         // Confetti for boss defeat
         setTimeout(() => {
           setShowConfetti(true);
@@ -552,9 +691,9 @@ export function GameScreen({
 
       setEarnedXP(xp);
 
-      // Rank-up detection
-      const prevRankInfo = getRankInfo(currentXP, lang);
-      const newRankInfo = getRankInfo(currentXP + xp, lang);
+      // Rank-up detection using real cumulative XP
+      const prevRankInfo = getRankInfo(realCurrentXP, lang);
+      const newRankInfo = getRankInfo(realCurrentXP + xp, lang);
       if (newRankInfo.rankIndex > prevRankInfo.rankIndex) {
         setRankUpInfo({
           oldRank: prevRankInfo.rankName,
@@ -597,49 +736,109 @@ export function GameScreen({
         },
         {
           onSuccess: (data) => {
-            if (data.badgeUnlocked) {
-              // Infer which badge was likely unlocked based on game context
-              let inferredBadgeId = "first_solve";
-              const solvedCount = Number(
-                (data as { puzzlesSolved?: bigint }).puzzlesSolved ?? 0,
-              );
-              if (gameMode === "boss_battle") {
-                inferredBadgeId = "boss_slayer";
-              } else if (gameMode === "survival" && errorCount === 0) {
-                inferredBadgeId = "survival_master";
-              } else if (gameMode === "chain" && chainCount >= 5) {
-                inferredBadgeId = "chain_5";
-              } else if (gameMode === "star_collector") {
-                inferredBadgeId = "star_perfect";
-              } else if (gameMode === "speed_rush" && isComplete) {
-                inferredBadgeId = "speed_rush_champion";
-              } else if (hintsUsed === 0 && errorCount === 0) {
-                inferredBadgeId = "perfect_solve";
-              } else if (hintsUsed === 0 && solvedCount >= 10) {
-                inferredBadgeId = "hint_free_10";
-              } else if (effectiveDifficulty === "master") {
-                inferredBadgeId = "master_difficulty";
-              } else if (solvedCount >= 100) {
-                inferredBadgeId = "century";
-              } else if (solvedCount === 1) {
-                inferredBadgeId = "first_solve";
+            // Use unlockedBadges array from backend (exact badge IDs)
+            const backendBadges = data.unlockedBadges ?? [];
+
+            // Also check game-mode specific badges not tracked by backend
+            const extraBadges: string[] = [];
+            if (
+              gameMode === "boss_battle" &&
+              !backendBadges.includes("boss_slayer")
+            ) {
+              extraBadges.push("boss_slayer");
+            }
+            if (
+              gameMode === "survival" &&
+              lives === 3 && // must have survived with all 3 lives intact
+              !backendBadges.includes("survival_master")
+            ) {
+              extraBadges.push("survival_master");
+            }
+            if (
+              gameMode === "chain" &&
+              chainCount >= 5 &&
+              !backendBadges.includes("chain_5")
+            ) {
+              extraBadges.push("chain_5");
+            }
+            if (
+              gameMode === "star_collector" &&
+              starsForThisGame === 3 && // only if perfect 3-star solve
+              !backendBadges.includes("star_perfect")
+            ) {
+              extraBadges.push("star_perfect");
+            }
+            if (
+              gameMode === "speed_rush" &&
+              !backendBadges.includes("speed_rush_champion")
+            ) {
+              extraBadges.push("speed_rush_champion");
+            }
+
+            // weekly_champion: all 7 weekly tasks completed
+            // Check this after onPuzzleSolved has run (which may mark weekly tasks)
+            // Use a short delay to ensure state has updated
+            // We check via localStorage directly
+            (() => {
+              if (isBadgeLocallyUnlocked("weekly_champion")) return;
+              try {
+                const raw = localStorage.getItem("sudokuverse_weekly_v2");
+                if (raw) {
+                  const parsed = JSON.parse(raw) as {
+                    weekKey: string;
+                    completed: boolean[];
+                  };
+                  if (parsed.completed.every(Boolean)) {
+                    extraBadges.push("weekly_champion");
+                  }
+                }
+              } catch (_) {
+                /* ignore */
               }
-              const info =
-                BADGE_INFO[inferredBadgeId] ?? BADGE_INFO.first_solve;
-              const badgeEmoji = info?.emoji ?? "🏅";
-              const badgeName =
-                info?.name[lang as "tr" | "en"] ??
-                (lang === "tr" ? "Yeni Rozet" : "New Badge");
-              setNewBadges([`${badgeEmoji} ${badgeName}`]);
-              setTimeout(() => playSound("badge_unlock"), 900);
-              setTimeout(() => {
-                toast.success(
-                  lang === "tr"
-                    ? `${badgeEmoji} Rozet Açıldı: ${badgeName}!`
-                    : `${badgeEmoji} Badge Unlocked: ${badgeName}!`,
-                  { duration: 4000 },
-                );
-              }, 1000);
+            })();
+
+            // daily_streak: player has a streak >= 3
+            (() => {
+              if (isBadgeLocallyUnlocked("daily_streak")) return;
+              try {
+                const raw = localStorage.getItem("sudokuverse_streak_v1");
+                if (raw) {
+                  const parsed = JSON.parse(raw) as {
+                    currentStreak: number;
+                  };
+                  if (parsed.currentStreak >= 3) {
+                    extraBadges.push("daily_streak");
+                  }
+                }
+              } catch (_) {
+                /* ignore */
+              }
+            })();
+
+            const allNewBadges = [...backendBadges, ...extraBadges];
+
+            if (allNewBadges.length > 0) {
+              const badgeDisplayNames: string[] = [];
+              allNewBadges.forEach((badgeId, i) => {
+                const info = BADGE_INFO[badgeId] ?? BADGE_INFO.first_solve;
+                const badgeEmoji = info?.emoji ?? "🏅";
+                const badgeName =
+                  info?.name[lang as "tr" | "en"] ??
+                  (lang === "tr" ? "Yeni Rozet" : "New Badge");
+                badgeDisplayNames.push(`${badgeEmoji} ${badgeName}`);
+                recordBadgeUnlockDate(badgeId);
+                const delay = 900 + i * 800;
+                setTimeout(() => playSound("badge_unlock"), delay);
+                setTimeout(() => {
+                  toast.success(
+                    lang === "tr"
+                      ? `${badgeEmoji} Rozet Açıldı: ${badgeName}!`
+                      : `${badgeEmoji} Badge Unlocked: ${badgeName}!`,
+                    { duration: 4000 },
+                  );
+                }, delay + 100);
+              });
+              setNewBadges(badgeDisplayNames);
             }
           },
         },
@@ -652,6 +851,8 @@ export function GameScreen({
       ) {
         if (gameMode === "blind") {
           setTimeout(() => setShowBlindComplete(true), 400);
+        } else if (gameMode === "one_error") {
+          setTimeout(() => setShowOneErrorComplete(true), 400);
         } else {
           setTimeout(() => setShowComplete(true), 400);
         }
@@ -667,25 +868,28 @@ export function GameScreen({
       combo,
       chainCount,
       lives,
-      isComplete,
       recordSolve,
       playSound,
       onPuzzleSolved,
       recordModeResult,
       advanceLevel,
       lang,
+      playerProfile,
     ],
   );
 
   // Chain mode: auto-restart after completion
   const handleChainNext = useCallback(() => {
     setIsComplete(false);
+    setChainAutoAdvanceCountdown(null);
     setErrorCells(new Set());
     setNotes(new Map());
     setHintCells(new Set());
     setErrorCount(0);
     setHintsUsed(0);
+    setHintsLeft(maxHints); // reset hints for next puzzle in chain
     setIsNoteMode(false);
+    setMoveHistory([]); // clear undo history for next puzzle
     setChainFlash(true);
     setChainCount((c) => c + 1);
     setTimeout(() => setChainFlash(false), 500);
@@ -695,7 +899,33 @@ export function GameScreen({
     setSolution(s);
     setOriginalPuzzle(p.map((row) => [...row]));
     setTimer(0);
-  }, [effectiveDifficulty]);
+  }, [effectiveDifficulty, maxHints]);
+
+  // Store handleChainNext in a ref for use in the countdown effect
+  const handleChainNextRef = useRef(handleChainNext);
+  useEffect(() => {
+    handleChainNextRef.current = handleChainNext;
+  });
+
+  // Chain mode: auto-advance countdown effect
+  useEffect(() => {
+    if (!isComplete || gameMode !== "chain" || showChainSummary) return;
+    // Start countdown at 2 when chain puzzle is complete
+    setChainAutoAdvanceCountdown(2);
+  }, [isComplete, gameMode, showChainSummary]);
+
+  useEffect(() => {
+    if (chainAutoAdvanceCountdown === null) return;
+    if (chainAutoAdvanceCountdown <= 0) {
+      setChainAutoAdvanceCountdown(null);
+      handleChainNextRef.current();
+      return;
+    }
+    const id = setTimeout(() => {
+      setChainAutoAdvanceCountdown((c) => (c !== null ? c - 1 : null));
+    }, 1000);
+    return () => clearTimeout(id);
+  }, [chainAutoAdvanceCountdown]);
 
   const handleCellChange = useCallback(
     (row: number, col: number, value: number, isNote = false) => {
@@ -800,6 +1030,12 @@ export function GameScreen({
             return next;
           });
         }
+        if (gameMode === "one_error") {
+          // One error mode: instant game over on first mistake
+          playSound("game_over");
+          recordModeResultRef.current({ gameMode: "one_error", won: false });
+          setTimeout(() => setShowOneErrorGameOver(true), 300);
+        }
         if (gameMode === "boss_battle") {
           setBossShake(true);
           setTimeout(() => setBossShake(false), 400);
@@ -817,6 +1053,12 @@ export function GameScreen({
           setCombo((c) => {
             const next = c + 1;
             if (next > c) playSound("combo_hit");
+            // Show combo burst overlay at milestones
+            if (next >= 2) {
+              setComboBurstValue(next);
+              setShowComboBurst(true);
+              setTimeout(() => setShowComboBurst(false), 1000);
+            }
             return next;
           });
         }
@@ -828,6 +1070,9 @@ export function GameScreen({
             setTimeout(() => setBossHitFlash(false), 200);
             return next;
           });
+        }
+        if (gameMode === "foggy") {
+          setFogRevealed((prev) => expandFog(prev, row, col));
         }
       }
 
@@ -1131,6 +1376,35 @@ export function GameScreen({
       {/* Confetti */}
       <ConfettiEffect active={showConfetti} />
 
+      {/* Speed Rush Combo Burst Overlay */}
+      <AnimatePresence>
+        {showComboBurst && gameMode === "speed_rush" && (
+          <motion.div
+            key={`combo-burst-${comboBurstValue}`}
+            initial={{ opacity: 0, scale: 0.3 }}
+            animate={{ opacity: [0, 1, 1, 0], scale: [0.3, 1.4, 1.2, 0.9] }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 1, times: [0, 0.2, 0.6, 1] }}
+            className="fixed inset-0 z-40 flex items-center justify-center pointer-events-none"
+          >
+            <div
+              className="font-black font-display text-6xl drop-shadow-2xl"
+              style={{
+                color:
+                  comboBurstValue >= 5
+                    ? "oklch(0.62 0.23 340)"
+                    : "oklch(0.72 0.19 52)",
+                textShadow:
+                  "0 0 32px oklch(0.72 0.19 52 / 0.7), 0 0 8px oklch(0 0 0 / 0.5)",
+                WebkitTextStroke: "2px oklch(0 0 0 / 0.3)",
+              }}
+            >
+              🔥 {comboBurstValue}x
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Chain Flash Overlay */}
       <AnimatePresence>
         {chainFlash && (
@@ -1197,6 +1471,22 @@ export function GameScreen({
               style={{ background: "oklch(0.3 0.15 275)" }}
             >
               👁️ {lang === "tr" ? "KÖR" : "BLIND"}
+            </span>
+          )}
+          {gameMode === "foggy" && (
+            <span
+              className="rounded-full px-2 py-0.5 text-xs font-black text-white"
+              style={{ background: "oklch(0.42 0.14 250)" }}
+            >
+              🌫️ {lang === "tr" ? "SİSLİ" : "FOGGY"}
+            </span>
+          )}
+          {gameMode === "one_error" && (
+            <span
+              className="rounded-full px-2 py-0.5 text-xs font-black text-white"
+              style={{ background: "oklch(0.4 0.18 350)" }}
+            >
+              ☠️ {lang === "tr" ? "0 HATA" : "0 ERR"}
             </span>
           )}
 
@@ -1387,48 +1677,30 @@ export function GameScreen({
           </div>
         )}
 
-        {/* Blind Countdown */}
-        {gameMode === "blind" && blindCountdown !== null && (
-          <div
-            className="fixed inset-0 z-50 flex flex-col items-center justify-center"
-            style={{
-              background: "oklch(0 0 0 / 0.75)",
-              backdropFilter: "blur(8px)",
-            }}
-          >
-            <motion.div
-              key={blindCountdown}
-              initial={{ scale: 1.5, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              className="text-8xl font-black font-display text-white"
-            >
-              {blindCountdown === 0 ? "👁️" : blindCountdown}
-            </motion.div>
-            <p className="mt-4 text-white text-lg font-bold">
-              {t("revealTime")}
-            </p>
-          </div>
-        )}
+        {/* Blind Countdown is handled in board area -- no overlay needed here */}
 
         {/* Errors row */}
         {gameMode !== "survival" && (
           <div className="flex items-center justify-center gap-4">
             <div className="flex items-center gap-1.5">
               <span className="text-lg">💡</span>
-              <div className="flex gap-1">
-                {[0, 1, 2].map((i) => (
-                  <div
-                    key={`hint-dot-${i}`}
-                    className="w-5 h-5 rounded-full"
-                    style={{
-                      background:
-                        i < hintsLeft
-                          ? "oklch(0.72 0.19 52)"
-                          : "oklch(0.88 0.02 260)",
-                      transition: "background 0.3s",
-                    }}
-                  />
-                ))}
+              <div className="flex gap-1 flex-wrap max-w-24">
+                {Array.from({ length: maxHints }, (_, i) => {
+                  const dotKey = `hint-slot-${i + 1}`;
+                  return (
+                    <div
+                      key={dotKey}
+                      className="w-4 h-4 rounded-full"
+                      style={{
+                        background:
+                          i < hintsLeft
+                            ? "oklch(0.72 0.19 52)"
+                            : "oklch(0.88 0.02 260)",
+                        transition: "background 0.3s",
+                      }}
+                    />
+                  );
+                })}
               </div>
             </div>
             <div
@@ -1462,7 +1734,26 @@ export function GameScreen({
         className="flex-1 flex flex-col items-center justify-center px-3 py-1"
         style={{ minHeight: 0 }}
       >
-        {isPaused ? (
+        {/* Blind mode countdown: hide board completely */}
+        {gameMode === "blind" && blindCountdown !== null ? (
+          <div className="flex flex-col items-center justify-center w-full h-full">
+            <motion.div
+              key={blindCountdown}
+              initial={{ scale: 1.5, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="text-8xl font-black font-display"
+              style={{ color: "oklch(var(--foreground))" }}
+            >
+              {blindCountdown === 0 ? "👁️" : blindCountdown}
+            </motion.div>
+            <p
+              className="mt-4 font-semibold text-lg"
+              style={{ color: "oklch(var(--muted-foreground))" }}
+            >
+              {t("revealTime")}
+            </p>
+          </div>
+        ) : isPaused ? (
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -1517,8 +1808,14 @@ export function GameScreen({
             blindHidden={
               gameMode === "blind" && isBlind ? blindHidden : undefined
             }
+            fogRevealed={
+              gameMode === "foggy" && fogRevealed.size > 0
+                ? fogRevealed
+                : undefined
+            }
             highlightedNumber={highlightedNumber ?? undefined}
             onCellSelect={(val) => setHighlightedNumber(val)}
+            lang={lang}
           />
         )}
       </main>
@@ -1729,14 +2026,70 @@ export function GameScreen({
                     </div>
                   ))}
                 </div>
-                <button
-                  type="button"
-                  data-ocid="game.complete.confirm_button"
-                  onClick={onBack}
-                  className="w-full gradient-bg-purple-pink text-white font-bold py-4 rounded-2xl text-lg transition-all hover:scale-105"
-                >
-                  {t("backToHome")}
-                </button>
+                <div className="flex flex-col gap-2 mt-4">
+                  {/* Try Another Mode button */}
+                  {onOpenModes && (
+                    <button
+                      type="button"
+                      data-ocid="game.complete.try_mode_button"
+                      onClick={onOpenModes}
+                      className="w-full font-bold py-3 rounded-2xl text-sm transition-all hover:scale-105 text-white"
+                      style={{
+                        background:
+                          "linear-gradient(135deg, oklch(0.42 0.22 292), oklch(0.62 0.23 340))",
+                      }}
+                    >
+                      🎮 {lang === "tr" ? "Başka Mod Dene" : "Try Another Mode"}
+                    </button>
+                  )}
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      data-ocid="game.complete.secondary_button"
+                      onClick={async () => {
+                        const elapsed =
+                          gameMode === "speed_rush"
+                            ? SPEED_RUSH_DURATION - speedTimeLeft
+                            : timer;
+                        const text = buildShareText(
+                          gameMode,
+                          errorCount,
+                          hintsUsed,
+                          elapsed,
+                          earnedXP,
+                          lang,
+                        );
+                        if (navigator.share && navigator.canShare?.({ text })) {
+                          try {
+                            await navigator.share({ text });
+                          } catch (_) {
+                            /* user cancelled */
+                          }
+                        } else {
+                          navigator.clipboard.writeText(text).then(() => {
+                            toast.success(t("shareCopied"), { duration: 2000 });
+                          });
+                        }
+                      }}
+                      className="flex-1 font-bold py-3 rounded-2xl text-sm border-2 transition-all hover:scale-105"
+                      style={{
+                        border: "2px solid oklch(var(--primary))",
+                        color: "oklch(var(--primary))",
+                        background: "transparent",
+                      }}
+                    >
+                      📤 {t("shareResult")}
+                    </button>
+                    <button
+                      type="button"
+                      data-ocid="game.complete.confirm_button"
+                      onClick={onBack}
+                      className="flex-1 gradient-bg-purple-pink text-white font-bold py-3 rounded-2xl text-sm transition-all hover:scale-105"
+                    >
+                      {t("backToHome")}
+                    </button>
+                  </div>
+                </div>
               </motion.div>
             </motion.div>
           )}
@@ -1881,24 +2234,129 @@ export function GameScreen({
               <div className="text-white/60 text-sm mb-6">
                 {formatTime(timer)} {t("time")}
               </div>
+              <div className="flex flex-col gap-2">
+                {onOpenModes && (
+                  <button
+                    type="button"
+                    data-ocid="game.gameover.try_mode_button"
+                    onClick={onOpenModes}
+                    className="w-full font-bold py-3 rounded-2xl text-sm text-white"
+                    style={{
+                      background:
+                        "linear-gradient(135deg, oklch(0.42 0.22 292), oklch(0.62 0.23 340))",
+                    }}
+                  >
+                    🎮 {lang === "tr" ? "Başka Mod Dene" : "Try Another Mode"}
+                  </button>
+                )}
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    data-ocid="game.gameover.play_again_button"
+                    onClick={() => {
+                      // Reset survival state and regenerate puzzle
+                      setShowGameOver(false);
+                      setIsComplete(false);
+                      setLives(3);
+                      setErrorCount(0);
+                      setHintsUsed(0);
+                      setHintsLeft(3);
+                      setTimer(0);
+                      setErrorCells(new Set());
+                      setNotes(new Map());
+                      setHintCells(new Set());
+                      setIsNoteMode(false);
+                      noteModeUsedRef.current = false;
+                      setIsLoading(true);
+                      setTimeout(() => {
+                        const { puzzle: p, solution: s } =
+                          generatePuzzle(effectiveDifficulty);
+                        setPuzzle(p);
+                        setSolution(s);
+                        setOriginalPuzzle(p.map((row) => [...row]));
+                        setIsLoading(false);
+                      }, 100);
+                    }}
+                    className="flex-1 font-bold py-3 rounded-2xl text-sm"
+                    style={{
+                      background: "oklch(0.55 0.2 145)",
+                      color: "white",
+                    }}
+                  >
+                    {lang === "tr" ? "Tekrar Dene 🔄" : "Try Again 🔄"}
+                  </button>
+                  <button
+                    type="button"
+                    data-ocid="game.gameover.confirm_button"
+                    onClick={onBack}
+                    className="flex-1 bg-white font-bold py-3 rounded-2xl text-sm"
+                    style={{ color: "oklch(0.4 0.2 340)" }}
+                  >
+                    {t("back")}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* One Error Mode: Game Over */}
+      <AnimatePresence>
+        {showOneErrorGameOver && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{
+              background: "oklch(0 0 0 / 0.8)",
+              backdropFilter: "blur(8px)",
+            }}
+          >
+            <motion.div
+              data-ocid="game.one_error_gameover.modal"
+              initial={{ scale: 0.7, y: 30 }}
+              animate={{ scale: 1, y: 0 }}
+              className="w-full max-w-sm rounded-3xl p-8 text-center shadow-2xl"
+              style={{
+                background:
+                  "linear-gradient(135deg, oklch(0.12 0.06 10), oklch(0.22 0.12 350))",
+              }}
+            >
+              <div className="text-6xl mb-3">☠️</div>
+              <h2 className="text-2xl font-bold font-display text-white mb-2">
+                {t("gameOver")}
+              </h2>
+              <p className="text-white/60 text-sm mb-6">
+                {lang === "tr"
+                  ? "Bir hata yaptın. Mükemmel oynamalısın!"
+                  : lang === "ar"
+                    ? "ارتكبت خطأً. يجب أن تلعب بشكل مثالي!"
+                    : "One mistake. You must play perfectly!"}
+              </p>
               <div className="flex gap-2">
                 <button
                   type="button"
-                  data-ocid="game.gameover.play_again_button"
+                  data-ocid="game.one_error_gameover.play_again_button"
                   onClick={() => {
-                    // Reset survival state and regenerate puzzle
-                    setShowGameOver(false);
+                    setShowOneErrorGameOver(false);
                     setIsComplete(false);
-                    setLives(3);
                     setErrorCount(0);
                     setHintsUsed(0);
-                    setHintsLeft(3);
+                    setHintsLeft(maxHints);
                     setTimer(0);
                     setErrorCells(new Set());
                     setNotes(new Map());
                     setHintCells(new Set());
                     setIsNoteMode(false);
                     noteModeUsedRef.current = false;
+                    // Reset blind mode state
+                    setIsBlind(false);
+                    setBlindHidden(new Set());
+                    setBlindCountdown(null);
+                    setFogRevealed(new Set());
+                    setMoveHistory([]);
                     setIsLoading(true);
                     setTimeout(() => {
                       const { puzzle: p, solution: s } =
@@ -1906,6 +2364,14 @@ export function GameScreen({
                       setPuzzle(p);
                       setSolution(s);
                       setOriginalPuzzle(p.map((row) => [...row]));
+                      // Re-init blind countdown for blind/one_error combo
+                      if (gameMode === "blind") {
+                        setBlindCountdown(5);
+                      }
+                      // Re-init fog for foggy mode
+                      if (gameMode === "foggy") {
+                        setFogRevealed(initFogRevealedCells(p));
+                      }
                       setIsLoading(false);
                     }, 100);
                   }}
@@ -1916,10 +2382,10 @@ export function GameScreen({
                 </button>
                 <button
                   type="button"
-                  data-ocid="game.gameover.confirm_button"
+                  data-ocid="game.one_error_gameover.confirm_button"
                   onClick={onBack}
                   className="flex-1 bg-white font-bold py-3 rounded-2xl text-sm"
-                  style={{ color: "oklch(0.4 0.2 340)" }}
+                  style={{ color: "oklch(0.4 0.12 350)" }}
                 >
                   {t("back")}
                 </button>
@@ -1929,7 +2395,7 @@ export function GameScreen({
         )}
       </AnimatePresence>
 
-      {/* Chain Mode: Complete puzzle, next or summary */}
+      {/* Chain Mode: Complete puzzle, auto-advance or stop */}
       <AnimatePresence>
         {isComplete && gameMode === "chain" && !showChainSummary && (
           <motion.div
@@ -1955,23 +2421,60 @@ export function GameScreen({
               <div className="text-4xl font-black font-display text-white mb-1">
                 #{chainCount}
               </div>
-              <p className="text-white/80 mb-6">
+              <p className="text-white/80 mb-4">
                 {lang === "tr" ? "Harika! Devam et!" : "Great! Keep going!"}
               </p>
+              {/* Auto-advance countdown indicator */}
+              {chainAutoAdvanceCountdown !== null && (
+                <motion.div
+                  key={chainAutoAdvanceCountdown}
+                  initial={{ scale: 1.4, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className="mb-4"
+                >
+                  <div
+                    className="inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-bold"
+                    style={{
+                      background: "oklch(1 0 0 / 0.15)",
+                      color: "oklch(0.85 0.15 150)",
+                    }}
+                  >
+                    <span>
+                      {lang === "tr" ? "Otomatik devam" : "Auto-continuing"}
+                    </span>
+                    <motion.span
+                      key={chainAutoAdvanceCountdown}
+                      initial={{ scale: 1.6 }}
+                      animate={{ scale: 1 }}
+                      className="font-black text-white text-base w-5 inline-block text-center"
+                    >
+                      {chainAutoAdvanceCountdown}
+                    </motion.span>
+                  </div>
+                </motion.div>
+              )}
               <div className="grid grid-cols-2 gap-3 mb-6">
                 <button
                   type="button"
                   data-ocid="game.chain.next.button"
-                  onClick={handleChainNext}
+                  onClick={() => {
+                    setChainAutoAdvanceCountdown(null);
+                    handleChainNext();
+                  }}
                   className="font-bold py-3 rounded-2xl text-white"
                   style={{ background: "oklch(0.55 0.2 145)" }}
                 >
-                  {lang === "tr" ? "Devam ⚡" : "Continue ⚡"}
+                  {lang === "tr"
+                    ? `Devam ⚡${chainAutoAdvanceCountdown !== null ? ` (${chainAutoAdvanceCountdown})` : ""}`
+                    : `Continue ⚡${chainAutoAdvanceCountdown !== null ? ` (${chainAutoAdvanceCountdown})` : ""}`}
                 </button>
                 <button
                   type="button"
                   data-ocid="game.chain.stop.button"
-                  onClick={() => setShowChainSummary(true)}
+                  onClick={() => {
+                    setChainAutoAdvanceCountdown(null);
+                    setShowChainSummary(true);
+                  }}
                   className="font-bold py-3 rounded-2xl"
                   style={{
                     background: "oklch(0.9 0.02 260)",
@@ -2049,31 +2552,107 @@ export function GameScreen({
                   </div>
                 </div>
                 <div
-                  className="rounded-2xl p-3 col-span-2"
+                  className="rounded-2xl p-3"
                   style={{ background: "oklch(var(--muted))" }}
                 >
                   <div
-                    className="text-2xl font-black font-display"
+                    className="text-lg font-black font-display"
                     style={{ color: "oklch(var(--foreground))" }}
                   >
-                    {getChainRecord()}
+                    {formatTime(chainTotalTime)}
                   </div>
                   <div
                     className="text-xs"
                     style={{ color: "oklch(var(--muted-foreground))" }}
                   >
-                    {lang === "tr" ? "En İyi Zincir" : "Best Chain"}
+                    {lang === "tr" ? "Toplam Süre" : "Total Time"}
+                  </div>
+                </div>
+                <div
+                  className="rounded-2xl p-3"
+                  style={{ background: "oklch(var(--muted))" }}
+                >
+                  <div
+                    className="text-lg font-black font-display"
+                    style={{
+                      color:
+                        chainTotalErrors === 0
+                          ? "oklch(0.68 0.2 145)"
+                          : "oklch(0.62 0.23 340)",
+                    }}
+                  >
+                    {chainTotalErrors === 0 ? "✓ 0" : chainTotalErrors}
+                  </div>
+                  <div
+                    className="text-xs"
+                    style={{ color: "oklch(var(--muted-foreground))" }}
+                  >
+                    {lang === "tr" ? "Toplam Hata" : "Total Errors"}
+                  </div>
+                </div>
+                <div
+                  className="rounded-2xl p-3 col-span-2"
+                  style={{
+                    background: "oklch(0.52 0.2 160 / 0.15)",
+                    border: "1px solid oklch(0.52 0.2 160 / 0.3)",
+                  }}
+                >
+                  <div
+                    className="text-2xl font-black font-display"
+                    style={{ color: "oklch(0.42 0.2 160)" }}
+                  >
+                    🏆 {getChainRecord()}
+                  </div>
+                  <div
+                    className="text-xs"
+                    style={{ color: "oklch(var(--muted-foreground))" }}
+                  >
+                    {lang === "tr"
+                      ? "En İyi Zincir Rekoru"
+                      : "Personal Best Chain"}
                   </div>
                 </div>
               </div>
-              <button
-                type="button"
-                data-ocid="game.chain.confirm_button"
-                onClick={onBack}
-                className="w-full gradient-bg-purple-pink text-white font-bold py-4 rounded-2xl text-lg"
-              >
-                {t("backToHome")}
-              </button>
+              <div className="flex flex-col gap-2">
+                {onOpenModes && (
+                  <button
+                    type="button"
+                    data-ocid="game.chain.try_mode_button"
+                    onClick={onOpenModes}
+                    className="w-full font-bold py-3 rounded-2xl text-sm text-white"
+                    style={{
+                      background:
+                        "linear-gradient(135deg, oklch(0.42 0.22 292), oklch(0.62 0.23 340))",
+                    }}
+                  >
+                    🎮 {lang === "tr" ? "Başka Mod Dene" : "Try Another Mode"}
+                  </button>
+                )}
+                <div className="flex gap-2">
+                  {onPlayAgain && (
+                    <button
+                      type="button"
+                      data-ocid="game.chain.play_again_button"
+                      onClick={onPlayAgain}
+                      className="flex-1 font-bold py-3 rounded-2xl text-sm"
+                      style={{
+                        background: "oklch(0.55 0.2 145)",
+                        color: "white",
+                      }}
+                    >
+                      {t("playAgain")} ⛓️
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    data-ocid="game.chain.confirm_button"
+                    onClick={onBack}
+                    className="flex-1 gradient-bg-purple-pink text-white font-bold py-3 rounded-2xl text-sm"
+                  >
+                    {t("backToHome")}
+                  </button>
+                </div>
+              </div>
             </motion.div>
           </motion.div>
         )}
@@ -2170,30 +2749,46 @@ export function GameScreen({
                   </div>
                 </div>
               </div>
-              <div className="flex gap-2 w-full">
-                {onPlayAgain && (
+              <div className="flex flex-col gap-2 w-full">
+                {onOpenModes && (
                   <button
                     type="button"
-                    data-ocid="game.stars.play_again_button"
-                    onClick={onPlayAgain}
-                    className="flex-1 font-bold py-3 rounded-2xl text-sm"
+                    data-ocid="game.stars.try_mode_button"
+                    onClick={onOpenModes}
+                    className="w-full font-bold py-3 rounded-2xl text-sm text-white"
                     style={{
-                      background: "oklch(0.55 0.2 145)",
-                      color: "white",
+                      background:
+                        "linear-gradient(135deg, oklch(0.42 0.22 292), oklch(0.62 0.23 340))",
                     }}
                   >
-                    {t("playAgain")} ⭐
+                    🎮 {lang === "tr" ? "Başka Mod Dene" : "Try Another Mode"}
                   </button>
                 )}
-                <button
-                  type="button"
-                  data-ocid="game.stars.confirm_button"
-                  onClick={onBack}
-                  className="flex-1 bg-white font-bold py-3 rounded-2xl text-sm"
-                  style={{ color: "oklch(0.42 0.2 300)" }}
-                >
-                  {t("backToHome")}
-                </button>
+                <div className="flex gap-2">
+                  {onPlayAgain && (
+                    <button
+                      type="button"
+                      data-ocid="game.stars.play_again_button"
+                      onClick={onPlayAgain}
+                      className="flex-1 font-bold py-3 rounded-2xl text-sm"
+                      style={{
+                        background: "oklch(0.55 0.2 145)",
+                        color: "white",
+                      }}
+                    >
+                      {t("playAgain")} ⭐
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    data-ocid="game.stars.confirm_button"
+                    onClick={onBack}
+                    className="flex-1 bg-white font-bold py-3 rounded-2xl text-sm"
+                    style={{ color: "oklch(0.42 0.2 300)" }}
+                  >
+                    {t("backToHome")}
+                  </button>
+                </div>
               </div>
             </motion.div>
           </motion.div>
@@ -2271,18 +2866,49 @@ export function GameScreen({
                 <div className="text-white/70 text-sm">{formatTime(timer)}</div>
                 <div className="text-white/70 text-sm">+{earnedXP} XP</div>
               </motion.div>
-              <motion.button
-                type="button"
-                data-ocid="game.boss.confirm_button"
+              <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: 0.8 }}
-                onClick={onBack}
-                className="w-full bg-white font-bold py-4 rounded-2xl text-lg relative"
-                style={{ color: "oklch(0.35 0.15 20)" }}
+                className="flex flex-col gap-2 relative"
               >
-                🏆 {t("backToHome")}
-              </motion.button>
+                {onOpenModes && (
+                  <button
+                    type="button"
+                    data-ocid="game.boss.try_mode_button"
+                    onClick={onOpenModes}
+                    className="w-full font-bold py-3 rounded-2xl text-sm text-white"
+                    style={{
+                      background:
+                        "linear-gradient(135deg, oklch(0.42 0.22 292), oklch(0.62 0.23 340))",
+                    }}
+                  >
+                    🎮 {lang === "tr" ? "Başka Mod Dene" : "Try Another Mode"}
+                  </button>
+                )}
+                <div className="flex gap-2">
+                  {onPlayAgain && (
+                    <button
+                      type="button"
+                      data-ocid="game.boss.play_again_button"
+                      onClick={onPlayAgain}
+                      className="flex-1 bg-white/20 font-bold py-3 rounded-2xl text-sm"
+                      style={{ color: "white" }}
+                    >
+                      {t("playAgain")} 🐉
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    data-ocid="game.boss.confirm_button"
+                    onClick={onBack}
+                    className="flex-1 bg-white font-bold py-3 rounded-2xl text-sm"
+                    style={{ color: "oklch(0.35 0.15 20)" }}
+                  >
+                    🏆 {t("backToHome")}
+                  </button>
+                </div>
+              </motion.div>
             </motion.div>
           </motion.div>
         )}
@@ -2423,6 +3049,186 @@ export function GameScreen({
         )}
       </AnimatePresence>
 
+      {/* One Error Mode Completion Modal */}
+      <AnimatePresence>
+        {showOneErrorComplete && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{
+              background: "oklch(0 0 0 / 0.75)",
+              backdropFilter: "blur(8px)",
+            }}
+          >
+            <motion.div
+              data-ocid="game.one_error_complete.modal"
+              initial={{ scale: 0.7, y: 30 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.8, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 220, damping: 18 }}
+              className="w-full max-w-sm rounded-3xl p-8 text-center shadow-2xl overflow-hidden relative"
+              style={{
+                background:
+                  "linear-gradient(135deg, oklch(0.14 0.06 10), oklch(0.28 0.12 340))",
+              }}
+            >
+              {/* Particle burst */}
+              <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                {RANKUP_PARTICLES.map((p, i) => (
+                  <motion.div
+                    key={p.id}
+                    className="absolute rounded-full"
+                    style={{
+                      top: "50%",
+                      left: "50%",
+                      width: 6,
+                      height: 6,
+                      background: p.color,
+                    }}
+                    initial={{ x: 0, y: 0, opacity: 1, scale: 1 }}
+                    animate={{
+                      x: p.dx * 2.5,
+                      y: p.dy * 2.5,
+                      opacity: 0,
+                      scale: 0,
+                    }}
+                    transition={{ duration: 1.2, delay: i * 0.04 }}
+                  />
+                ))}
+              </div>
+
+              <motion.div
+                initial={{ scale: 0, rotate: -20 }}
+                animate={{ scale: [0, 1.3, 1], rotate: 0 }}
+                transition={{ delay: 0.1, type: "spring", stiffness: 280 }}
+                className="text-6xl mb-3 relative"
+              >
+                ☠️
+              </motion.div>
+
+              <motion.h2
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.25 }}
+                className="text-2xl font-black font-display text-white mb-1 relative"
+              >
+                {lang === "tr" ? "Mükemmel Oyun!" : "Flawless Victory!"}
+              </motion.h2>
+
+              <motion.p
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.4 }}
+                className="text-white/70 text-sm mb-5 relative"
+              >
+                {lang === "tr"
+                  ? "Sıfır Tolerans modunu hatasız tamamladın!"
+                  : "You completed Zero Tolerance mode without a single mistake!"}
+              </motion.p>
+
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.45 }}
+                className="grid grid-cols-2 gap-2 mb-6 relative"
+              >
+                <div
+                  className="rounded-xl p-2.5 text-left"
+                  style={{ background: "oklch(1 0 0 / 0.1)" }}
+                >
+                  <div className="text-white/50 text-xs mb-0.5">
+                    {t("timeLabel")}
+                  </div>
+                  <div className="text-white font-bold text-base">
+                    ⏱ {formatTime(timer)}
+                  </div>
+                </div>
+                <div
+                  className="rounded-xl p-2.5 text-left"
+                  style={{ background: "oklch(1 0 0 / 0.1)" }}
+                >
+                  <div className="text-white/50 text-xs mb-0.5">
+                    {t("xpEarned")}
+                  </div>
+                  <div className="text-white font-bold text-base">
+                    ⭐ +{earnedXP}
+                  </div>
+                </div>
+                <div
+                  className="rounded-xl p-2.5 text-left"
+                  style={{ background: "oklch(1 0 0 / 0.1)" }}
+                >
+                  <div className="text-white/50 text-xs mb-0.5">
+                    {t("hintsUsed")}
+                  </div>
+                  <div className="text-white font-bold text-base">
+                    💡 {hintsUsed}
+                  </div>
+                </div>
+                <div
+                  className="rounded-xl p-2.5 text-left"
+                  style={{ background: "oklch(0.55 0.2 145 / 0.3)" }}
+                >
+                  <div className="text-white/50 text-xs mb-0.5">
+                    {lang === "tr" ? "Hata" : "Errors"}
+                  </div>
+                  <div className="text-white font-bold text-base">✓ 0</div>
+                </div>
+              </motion.div>
+
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.7 }}
+                className="flex flex-col gap-2 relative"
+              >
+                {onOpenModes && (
+                  <button
+                    type="button"
+                    data-ocid="game.one_error_complete.try_mode_button"
+                    onClick={onOpenModes}
+                    className="w-full font-bold py-3 rounded-2xl text-sm text-white"
+                    style={{
+                      background:
+                        "linear-gradient(135deg, oklch(0.42 0.22 292), oklch(0.62 0.23 340))",
+                    }}
+                  >
+                    🎮 {lang === "tr" ? "Başka Mod Dene" : "Try Another Mode"}
+                  </button>
+                )}
+                <div className="flex gap-2">
+                  {onPlayAgain && (
+                    <button
+                      type="button"
+                      data-ocid="game.one_error_complete.play_again_button"
+                      onClick={onPlayAgain}
+                      className="flex-1 font-bold py-3 rounded-2xl text-sm"
+                      style={{
+                        background: "oklch(0.55 0.2 145)",
+                        color: "white",
+                      }}
+                    >
+                      {t("playAgain")} ☠️
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    data-ocid="game.one_error_complete.confirm_button"
+                    onClick={onBack}
+                    className="flex-1 bg-white font-bold py-3 rounded-2xl text-sm"
+                    style={{ color: "oklch(0.4 0.12 350)" }}
+                  >
+                    {t("backToHome")}
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Blind Mode Completion Modal */}
       <AnimatePresence>
         {showBlindComplete && (
@@ -2555,35 +3361,104 @@ export function GameScreen({
                 </div>
               </motion.div>
 
-              <div className="flex gap-2 relative">
-                {onPlayAgain && (
+              <div className="flex flex-col gap-2 relative">
+                {/* Blind play-again countdown indicator */}
+                {blindPlayAgainCountdown !== null && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex items-center justify-center gap-2 py-2 rounded-2xl text-sm font-bold"
+                    style={{
+                      background: "oklch(1 0 0 / 0.12)",
+                      color: "oklch(0.85 0.12 280)",
+                    }}
+                  >
+                    <span>👁️</span>
+                    <span>
+                      {lang === "tr"
+                        ? "Ezberleme başlıyor..."
+                        : "Memorise in..."}
+                    </span>
+                    <motion.span
+                      key={blindPlayAgainCountdown}
+                      initial={{ scale: 1.5 }}
+                      animate={{ scale: 1 }}
+                      className="font-black text-white text-base w-5 inline-block text-center"
+                    >
+                      {blindPlayAgainCountdown}
+                    </motion.span>
+                  </motion.div>
+                )}
+                <div className="flex gap-2">
                   <motion.button
                     type="button"
                     data-ocid="game.blind.play_again_button"
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ delay: 0.7 }}
-                    onClick={onPlayAgain}
-                    className="flex-1 font-bold py-3 rounded-2xl text-sm"
+                    onClick={() => {
+                      // Start 3-second countdown before loading new puzzle
+                      setBlindPlayAgainCountdown(3);
+                    }}
+                    disabled={blindPlayAgainCountdown !== null}
+                    className="flex-1 font-bold py-3 rounded-2xl text-sm disabled:opacity-50"
                     style={{
                       background: "oklch(0.55 0.2 145)",
                       color: "white",
                     }}
                   >
-                    {t("playAgain")} 👁️
+                    {blindPlayAgainCountdown !== null
+                      ? `${blindPlayAgainCountdown}...`
+                      : `${t("playAgain")} 👁️`}
                   </motion.button>
-                )}
+                  <motion.button
+                    type="button"
+                    data-ocid="game.blind.confirm_button"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.8 }}
+                    onClick={onBack}
+                    className="flex-1 bg-white font-bold py-3 rounded-2xl text-sm"
+                    style={{ color: "oklch(0.35 0.12 280)" }}
+                  >
+                    {t("backToHome")}
+                  </motion.button>
+                </div>
                 <motion.button
                   type="button"
-                  data-ocid="game.blind.confirm_button"
+                  data-ocid="game.blind.secondary_button"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  transition={{ delay: 0.8 }}
-                  onClick={onBack}
-                  className="flex-1 bg-white font-bold py-3 rounded-2xl text-sm"
-                  style={{ color: "oklch(0.35 0.12 280)" }}
+                  transition={{ delay: 0.9 }}
+                  onClick={async () => {
+                    const text = buildShareText(
+                      "blind",
+                      errorCount,
+                      hintsUsed,
+                      timer,
+                      earnedXP,
+                      lang,
+                    );
+                    if (navigator.share && navigator.canShare?.({ text })) {
+                      try {
+                        await navigator.share({ text });
+                      } catch (_) {
+                        /* user cancelled */
+                      }
+                    } else {
+                      navigator.clipboard.writeText(text).then(() => {
+                        toast.success(t("shareCopied"), { duration: 2000 });
+                      });
+                    }
+                  }}
+                  className="w-full font-bold py-2.5 rounded-2xl text-sm"
+                  style={{
+                    border: "1.5px solid oklch(1 0 0 / 0.3)",
+                    color: "oklch(1 0 0 / 0.8)",
+                    background: "transparent",
+                  }}
                 >
-                  {t("backToHome")}
+                  📤 {t("shareResult")}
                 </motion.button>
               </div>
             </motion.div>

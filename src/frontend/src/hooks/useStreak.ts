@@ -1,11 +1,47 @@
 import { useCallback, useEffect, useState } from "react";
 
 const STREAK_KEY = "sudokuverse_streak_v1";
+const STREAK_HISTORY_KEY = "sudokuverse_streak_history_v1";
 
 interface StreakData {
   lastPlayDate: string; // YYYY-MM-DD
   currentStreak: number;
   longestStreak: number;
+}
+
+/** Returns last N days as YYYY-MM-DD strings, oldest first */
+export function getLastNDays(n: number): string[] {
+  const days: string[] = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    days.push(
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`,
+    );
+  }
+  return days;
+}
+
+/** Returns a Set of dates on which the player played */
+export function getPlayedDates(): Set<string> {
+  try {
+    const raw = localStorage.getItem(STREAK_HISTORY_KEY);
+    if (raw) {
+      return new Set(JSON.parse(raw) as string[]);
+    }
+  } catch (_) {
+    /* ignore */
+  }
+  return new Set();
+}
+
+function recordPlayedDate(dateStr: string): void {
+  const set = getPlayedDates();
+  set.add(dateStr);
+  // Keep only last 30 days
+  const last30 = getLastNDays(30);
+  const pruned = last30.filter((d) => set.has(d));
+  localStorage.setItem(STREAK_HISTORY_KEY, JSON.stringify(pruned));
 }
 
 function getTodayStr(): string {
@@ -87,6 +123,7 @@ export function useStreak() {
 
     if (data.lastPlayDate !== today) {
       saveStreakData(newData);
+      recordPlayedDate(today);
     }
 
     setStreak(newStreak);

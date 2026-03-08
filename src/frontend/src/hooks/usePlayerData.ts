@@ -62,4 +62,20 @@ export function useRecordPuzzleSolve() {
   });
 }
 
+export function useAddStreakBonus() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  const uuid = getOrCreateUUID();
+
+  return useMutation({
+    mutationFn: async (bonusXp: number) => {
+      if (!actor) throw new Error("No actor");
+      return actor.addStreakBonus(uuid, BigInt(bonusXp));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["playerData", uuid] });
+    },
+  });
+}
+
 export { getOrCreateUUID };

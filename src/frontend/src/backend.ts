@@ -99,11 +99,16 @@ export interface DailyTask {
     taskType: DailyTaskType;
 }
 export interface PlayerStats {
+    mediumCount: bigint;
     avgMasterTime: bigint;
+    masterCount: bigint;
     avgExpertTime: bigint;
     avgEasyTime: bigint;
     avgHardTime: bigint;
+    expertCount: bigint;
+    hardCount: bigint;
     avgMediumTime: bigint;
+    easyCount: bigint;
 }
 export interface PlayerProfile {
     xp: bigint;
@@ -131,10 +136,12 @@ export enum Difficulty {
     medium = "medium"
 }
 export interface backendInterface {
+    addStreakBonus(uuid: string, bonusXp: bigint): Promise<bigint>;
     getAllPlayerProfiles(): Promise<Array<PlayerProfile>>;
     getPlayerData(uuid: string): Promise<PlayerProfile>;
     initializePlayer(uuid: string): Promise<PlayerProfile>;
     recordPuzzleSolve(uuid: string, difficulty: Difficulty, solveTime: bigint, hintsUsed: bigint, errorsMade: bigint): Promise<{
+        unlockedBadges: Array<string>;
         newXp: bigint;
         badgeUnlocked: boolean;
         newRank: bigint;
@@ -143,6 +150,20 @@ export interface backendInterface {
 import type { DailyTask as _DailyTask, DailyTaskType as _DailyTaskType, Difficulty as _Difficulty, PlayerProfile as _PlayerProfile, PlayerStats as _PlayerStats, WeeklyChallenge as _WeeklyChallenge } from "./declarations/backend.did.d.ts";
 export class Backend implements backendInterface {
     constructor(private actor: ActorSubclass<_SERVICE>, private _uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, private _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, private processError?: (error: unknown) => never){}
+    async addStreakBonus(arg0: string, arg1: bigint): Promise<bigint> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.addStreakBonus(arg0, arg1);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.addStreakBonus(arg0, arg1);
+            return result;
+        }
+    }
     async getAllPlayerProfiles(): Promise<Array<PlayerProfile>> {
         if (this.processError) {
             try {
@@ -186,6 +207,7 @@ export class Backend implements backendInterface {
         }
     }
     async recordPuzzleSolve(arg0: string, arg1: Difficulty, arg2: bigint, arg3: bigint, arg4: bigint): Promise<{
+        unlockedBadges: Array<string>;
         newXp: bigint;
         badgeUnlocked: boolean;
         newRank: bigint;
