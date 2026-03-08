@@ -113,6 +113,22 @@ function AppInner() {
     }
   }, [theme, musicEnabled, startThemeMusic]);
 
+  // Pause music when the tab/app goes to background, resume when it returns
+  const { stopMusic } = useSound();
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        stopMusic();
+      } else if (musicEnabled) {
+        startThemeMusic(theme);
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [musicEnabled, theme, startThemeMusic, stopMusic]);
+
   const handleOpenModes = () => setScreen("modeHub");
 
   const handleSelectMode = (mode: GameMode, difficulty: Difficulty) => {
